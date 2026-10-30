@@ -22,7 +22,7 @@ import traceback
 from . import db, languages
 from .config import Settings
 from .judge import JUDGE_ERROR, Judge, ProblemSpec
-from .sandbox import Sandbox, jail_available, network_isolation_available
+from .sandbox import Sandbox, build_launcher, jail_available, network_isolation_available
 
 POLL_SECONDS = 0.25
 
@@ -80,7 +80,8 @@ def judge_submission(conn: sqlite3.Connection, judge: Judge, settings: Settings,
 def make_judge(settings: Settings, n: int, isolate: bool, jail: bool = False) -> Judge:
     work = settings.boxes_dir / f"worker-{n}"
     sandbox = Sandbox(work / "box", uid=settings.sandbox_uid_base + n, isolate_network=isolate,
-                      jail=jail, readonly=[settings.pch_dir])
+                      jail=jail, readonly=[settings.pch_dir, settings.runtime_dir],
+                      launcher=build_launcher(settings.runtime_dir))
     return Judge(sandbox, work / "io", pch_dir=settings.pch_dir)
 
 

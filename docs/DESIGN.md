@@ -70,6 +70,13 @@ its Wi-Fi**. The laptop is the server, the judge and the scoreboard.
 - **Precompiled `<bits/stdc++.h>`** is built at start-up, once per g++ version.
   It cuts a typical compile from about 2.5 s to 0.7 s, which roughly triples
   judging throughput.
+- **Memory is measured by a launcher.** `ru_maxrss` keeps a process's peak
+  across `exec`, so a program forked straight from the judge's Python process
+  was charged for the judge's memory: 14–23 MB for a trivial run, and memory
+  limit exceeded for a correct A+B when the judge held 300 MB. Untrusted runs
+  now go through `launcher.c` (built once with gcc). It forks the program from
+  a ~1 MB process and reports its rusage over a pipe the program can't reach:
+  the fd is closed before exec, and the launcher is non-dumpable.
 - **Plain passwords are never stored.** Generated passwords live in memory
   until the admin prints the slips and clicks "forget".
 

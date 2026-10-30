@@ -104,7 +104,7 @@ it every time.
 | Languages | `cpp` (g++ `-std=gnu++20 -O2`), `java21` (any public class name), `py12` (CPython 3). Same ids as electicode |
 | Verdicts | `accepted`, `wrong_answer`, `time_limit_exceeded`, `memory_limit_exceeded`, `runtime_error`, `compilation_error`, `judge_error` |
 | Time | CPU time against the problem's limit; Java gets 2× the limit. A wall-clock limit catches runs that sleep |
-| Memory | peak RSS against the limit; for C++ and Python, address space is capped at the limit too |
+| Memory | the program's own peak RSS against the limit (measured by a tiny launcher, so the judge's memory never counts); for C++ and Python, address space is capped at the limit too |
 | ICPC contests | tests run in order and stop at the first failure ("Wrong answer on test 5") |
 | IOI contests | test groups score with Polygon's rules: `complete-group` is all or nothing, `each-test` sums test points, and a group whose dependencies failed is skipped |
 | Checkers | the package's testlib checker (exit codes 0/1/2/3/7, `quitp` partial points). With no checker, a token-by-token comparison |

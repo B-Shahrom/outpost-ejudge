@@ -29,7 +29,7 @@ outpost = "outpost.__main__:main"
 packages = ["outpost"]
 
 [tool.setuptools.package-data]
-outpost = ["templates/*.html", "templates/admin/*.html", "static/*", "static/vendor/katex/*", "static/vendor/katex/fonts/*"]
+outpost = ["launcher.c", "templates/*.html", "templates/admin/*.html", "static/*", "static/vendor/katex/*", "static/vendor/katex/fonts/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

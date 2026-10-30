@@ -201,9 +201,55 @@ def test_filesystem_jail(settings, tmp_path):
     text = out.read_text()
     assert res.ok, text
     assert "problems False" in text and "db False" in text, text
-    assert "listing ['boxes', 'pch']" in text or "listing ['boxes']" in text, text
+    listing = eval(text.split("listing ")[1].split("\n")[0])
+    assert set(listing) <= {"boxes", "pch", "runtime"}, listing  # only what runs need
     assert "home False root False" in text
     assert "tmp ok" in text and "box ok" in text and "usr ro" in text and "etc ro" in text
     assert (sb.box / "here.txt").exists()          # the box is the real one
     assert not any(str(sb.jail_root) in line for line in open("/proc/self/mounts"))  # nothing leaked
+    sb.clean()
+
+
+def test_memory_is_the_programs_not_the_judges(settings, tmp_path):
+    # ru_maxrss survives exec, so forking from a big judge used to charge its
+    # memory to the program (a correct A+B came back memory_limit_exceeded
+    # when the judging process held 300 MB).
+    ballast = bytearray(300 * 1024 * 1024)
+    for i in range(0, len(ballast), 4096):
+        ballast[i] = 1
+    sb = worker.make_judge(settings, 10, False, False).sb
+    assert sb.launcher, "the launcher should build wherever gcc exists"
+    sb.prepare()
+    res = sb.run(["/bin/true"], Limits(time_ms=1000, memory_mb=256))
+    assert res.ok and res.memory_kb < 20 * 1024, res
+    hog = sb.run(["python3", "-c", "x = bytearray(150 * 1024 * 1024); x[::4096] = b'1' * len(x[::4096])"],
+                 Limits(time_ms=5000, memory_mb=None))
+    assert 150 * 1024 < hog.memory_kb < 250 * 1024, hog
+    del ballast
+    sb.clean()
+
+
+@pytest.mark.skipif(os.geteuid() != 0, reason="a separate uid needs root")
+def test_program_cannot_forge_the_launchers_report(settings, tmp_path):
+    sb = worker.make_judge(settings, 11, False, False).sb
+    sb.prepare()
+    forge = sb.box / "forge.py"
+    forge.write_text(
+        "import os\n"
+        "for fd in range(3, 20):\n"
+        "    try: os.write(fd, b'0 0 1 1 1\\n'); print('wrote fd', fd)\n"
+        "    except OSError: pass\n"
+        "ppid = os.getppid()\n"
+        "for fd in range(3, 20):\n"
+        "    try:\n"
+        "        with open(f'/proc/{ppid}/fd/{fd}', 'w') as f: f.write('0 0 1 1 1\\n'); print('proc fd', fd)\n"
+        "    except OSError: pass\n"
+        "x = 0\n"
+        "for i in range(3 * 10**7): x += i\n")
+    sb.give(forge)
+    out = tmp_path / "out"
+    with open(out, "wb") as f:
+        res = sb.run(["python3", "forge.py"], Limits(time_ms=20000, memory_mb=None), stdout=f)
+    assert "wrote" not in out.read_text() and "proc fd" not in out.read_text(), out.read_text()
+    assert res.time_ms > 100, res   # the real CPU time, not the forged 0 ms
     sb.clean()

@@ -49,6 +49,11 @@ class Settings:
         return self.data_dir / "boxes"
 
     @property
+    def runtime_dir(self) -> Path:
+        """Helpers sandboxed runs execute (the launcher), readable by every uid."""
+        return self.data_dir / "runtime"
+
+    @property
     def pch_dir(self) -> Path:
         return self.data_dir / "pch"
 

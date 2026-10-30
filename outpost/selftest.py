@@ -61,7 +61,7 @@ def run(out=print) -> int:
         pch = languages.prepare_pch(real.pch_dir, log=lambda line: out("  " + line))
         judge = make_judge(settings, 98, isolated, jailed)
         judge.pch_dir = pch
-        judge.sb.readonly = [str(pch)] if pch else []
+        judge.sb.readonly = [str(p) for p in (pch, settings.runtime_dir) if p]
 
         out("Judging known programs:")
         for name, lang, src, want in CASES:

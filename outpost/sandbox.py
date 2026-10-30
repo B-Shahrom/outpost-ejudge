@@ -134,6 +134,38 @@ class Running:
     started: float = field(default_factory=time.monotonic)
     result: RunResult | None = None
     killed_for_wall: bool = False
+    report_fd: int | None = None     # read end of the launcher's report pipe
+
+
+def build_launcher(runtime_dir: Path, log=lambda _: None) -> Path | None:
+    """Compile launcher.c into ``runtime_dir`` once (rebuilt when the source changes)."""
+    import fcntl
+    import hashlib
+    import shutil
+    src = Path(__file__).with_name("launcher.c")
+    cc = shutil.which("gcc") or shutil.which("cc") or shutil.which("g++")
+    if cc is None or not src.exists():
+        return None
+    digest = hashlib.sha256(src.read_bytes()).hexdigest()[:16]
+    exe = runtime_dir / f"outpost-launch-{digest}"
+    if exe.exists():
+        return exe
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    runtime_dir.chmod(0o755)  # sandboxed runs (other uids) exec it
+    with open(runtime_dir / "build.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if exe.exists():
+            return exe
+        tmp = runtime_dir / f".launch.{os.getpid()}.tmp"
+        argv = [cc, "-O2", "-o", str(tmp), "-x", "c", str(src)]
+        res = subprocess.run(argv, capture_output=True, text=True)
+        if res.returncode != 0:
+            log("could not build the launcher (memory figures will include the judge's own): "
+                + res.stderr[-300:])
+            return None
+        tmp.chmod(0o755)
+        os.replace(tmp, exe)
+    return exe
 
 
 def jail_available(scratch: Path) -> bool:
@@ -176,7 +208,7 @@ class Sandbox:
     """Spawns runs inside one box directory as one uid."""
 
     def __init__(self, box: Path, uid: int | None = None, isolate_network: bool = True,
-                 jail: bool = False, readonly: list[Path] | None = None):
+                 jail: bool = False, readonly: list[Path] | None = None, launcher: Path | None = None):
         self.box = box
         # Dropping privileges is only possible (and only needed) as root.
         self.uid = uid if (uid is not None and os.geteuid() == 0) else None
@@ -184,6 +216,7 @@ class Sandbox:
         self.jail = jail and os.geteuid() == 0
         self.readonly = [str(p) for p in (readonly or [])]  # extra paths a jailed run may read
         self.jail_root = box.parent / "jail"
+        self.launcher = str(launcher) if launcher else None  # see launcher.c
 
     # -- box management -------------------------------------------------
     def prepare(self) -> Path:
@@ -261,6 +294,10 @@ class Sandbox:
                 os.setgid(uid)
                 os.setuid(uid)
 
+        report_r = report_w = None
+        if self.launcher and not trusted:
+            report_r, report_w = os.pipe()
+            argv = [self.launcher, str(report_w), *argv]
         base_env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "LANG": "C.UTF-8",
                     "HOME": str(cwd or self.box), "TMPDIR": str(cwd or self.box)}
         if env:
@@ -271,11 +308,19 @@ class Sandbox:
                 stdout=stdout if stdout is not None else subprocess.DEVNULL,
                 stderr=stderr, cwd=str(cwd or self.box), env=base_env,
                 preexec_fn=setup, start_new_session=True, close_fds=True,
+                pass_fds=(report_w,) if report_w is not None else (),
             )
+        except BaseException:
+            for fd in (report_r, report_w):
+                if fd is not None:
+                    os.close(fd)
+            raise
         finally:
             if stderr is not subprocess.DEVNULL:
                 stderr.close()
-        return Running(proc=proc, limits=limits, stderr_path=stderr_path)
+        if report_w is not None:
+            os.close(report_w)  # only the launcher holds the write end now
+        return Running(proc=proc, limits=limits, stderr_path=stderr_path, report_fd=report_r)
 
     def wait(self, *runs: Running) -> list[RunResult]:
         """Wait for every run, killing any that overstay their wall limit."""
@@ -315,13 +360,34 @@ def _stderr_tail(path: Path | None) -> bytes:
         return f.read()
 
 
+def _read_report(fd: int | None) -> tuple[int | None, int | None, int, int] | None:
+    """The launcher's line: (exit code, signal, cpu ms, peak KB), or None if it never wrote."""
+    if fd is None:
+        return None
+    try:
+        data = b""
+        while chunk := os.read(fd, 256):
+            data += chunk
+    finally:
+        os.close(fd)
+    try:
+        code, sig, user_us, sys_us, rss = (int(x) for x in data.split())
+    except ValueError:
+        return None
+    return (code if code >= 0 else None), (sig or None), (user_us + sys_us) // 1000, rss
+
+
 def _classify(r: Running, status: int, usage) -> RunResult:
     lim = r.limits
-    cpu_ms = int((usage.ru_utime + usage.ru_stime) * 1000)
     wall_ms = int((time.monotonic() - r.started) * 1000)
-    mem_kb = int(usage.ru_maxrss)
-    sig = os.WTERMSIG(status) if os.WIFSIGNALED(status) else None
-    code = os.WEXITSTATUS(status) if os.WIFEXITED(status) else None
+    report = _read_report(r.report_fd)
+    if report is not None:  # the program itself, measured by the launcher
+        code, sig, cpu_ms, mem_kb = report
+    else:  # no launcher, or it was killed (wall-clock limit) before reporting
+        cpu_ms = int((usage.ru_utime + usage.ru_stime) * 1000)
+        mem_kb = int(usage.ru_maxrss)
+        sig = os.WTERMSIG(status) if os.WIFSIGNALED(status) else None
+        code = os.WEXITSTATUS(status) if os.WIFEXITED(status) else None
 
     def res(kind: str, note: str = "") -> RunResult:
         return RunResult(kind, code, sig, cpu_ms, wall_ms, mem_kb, note)
