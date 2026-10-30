@@ -16,6 +16,7 @@ dependencies = [
   "python-multipart>=0.0.9",
   "itsdangerous>=2.1",
   "segno>=1.6",
+  "zeroconf>=0.130",
 ]
 
 [project.optional-dependencies]

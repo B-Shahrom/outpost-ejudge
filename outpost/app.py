@@ -48,7 +48,7 @@ class Redirect(Exception):
         self.url = url
 
 
-def create_app(settings: Settings, pool=None) -> FastAPI:
+def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> FastAPI:
     settings.ensure_dirs()
     db.init(settings.db_path)
     app = FastAPI(title="Outpost", docs_url=None, redoc_url=None, openapi_url=None)
@@ -67,6 +67,7 @@ def create_app(settings: Settings, pool=None) -> FastAPI:
     env.globals["LANGS"] = languages.LANGUAGES
     app.state.settings = settings
     app.state.pool = pool
+    app.state.mdns_host = mdns_host  # e.g. "outpost.local", when announced
     app.state.imports: dict[str, dict] = {}
     # New accounts with their plain passwords, kept in memory only (never in
     # the database) until the admin has printed the slips.
@@ -371,15 +372,23 @@ def create_app(settings: Settings, pool=None) -> FastAPI:
                       users=db.one(c, "SELECT COUNT(*) AS n FROM users WHERE is_admin=0")["n"])
 
     def contestant_urls(c) -> tuple[list[str], str]:
-        """The address(es) contestants should type, and where that came from."""
+        """The address(es) contestants should type, and where that came from.
+
+        The IP comes first everywhere: ``.local`` names don't resolve in every
+        browser (Android especially), so the mDNS name is the alternative.
+        """
         saved = db.get_setting(c, "public_url")
         if saved:
-            return [saved], "set"
-        if settings.public_url:
-            return [settings.public_url], "env"
-        if config.in_container():
-            return [], "container"  # our own addresses are the container's, useless to them
-        return [f"http://{ip}:{settings.port}/" for ip in lan_addresses()], "detected"
+            urls, source = [saved], "set"
+        elif settings.public_url:
+            urls, source = [settings.public_url], "env"
+        elif config.in_container():
+            urls, source = [], "container"  # our own addresses are the container's, useless to them
+        else:
+            urls, source = [f"http://{ip}:{settings.port}/" for ip in lan_addresses()], "detected"
+        if app.state.mdns_host and urls:
+            urls.insert(1, f"http://{app.state.mdns_host}:{settings.port}/")
+        return urls, source
 
     @app.post("/admin/address")
     def admin_address(request: Request, url: str = Form("")):
@@ -754,7 +763,8 @@ def create_app(settings: Settings, pool=None) -> FastAPI:
         need_admin(request, c)
         urls, _ = contestant_urls(c)
         return render(request, "admin/slips.html", c, people=app.state.batches.get(batch, []),
-                      url=urls[0] if urls else "")
+                      url=urls[0] if urls else "",
+                      alt_url=urls[1] if len(urls) > 1 and ".local" in urls[1] else "")
 
     # clarifications
     @app.get("/admin/contests/{code}/clarifications", response_class=HTMLResponse)

@@ -33,6 +33,8 @@ class Settings:
     # container, the machine's own addresses are hidden). The admin can also
     # set it on the dashboard; that wins.
     public_url: str = ""
+    # mDNS name to announce (outpost -> outpost.local); "" turns it off.
+    mdns_name: str = "outpost"
 
     @property
     def db_path(self) -> Path:
@@ -94,7 +96,16 @@ def load() -> Settings:
         workers=int(os.environ.get("OUTPOST_WORKERS", _default_workers())),
         sandbox_uid_base=int(os.environ.get("OUTPOST_SANDBOX_UID", "60000")),
         public_url=normalise_url(os.environ.get("OUTPOST_PUBLIC_URL", "")),
+        mdns_name=_mdns_name(),
     )
+
+
+def _mdns_name() -> str:
+    """OUTPOST_MDNS: auto (default: on unless in a container), 1/on, 0/off."""
+    mode = os.environ.get("OUTPOST_MDNS", "auto").strip().lower()
+    if mode in ("0", "off", "no", "false") or (mode == "auto" and in_container()):
+        return ""
+    return os.environ.get("OUTPOST_MDNS_NAME", "outpost").strip() or "outpost"
 
 
 def normalise_url(text: str) -> str:

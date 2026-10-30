@@ -210,3 +210,18 @@ def test_contestant_address_can_be_set(app):
     assert "http://192.168.137.1:8000/" in admin.get(f"/admin/slips/{batch}").text
     admin.post("/admin/address", data={"url": ""})
     assert "Detected" in admin.get("/admin").text or "container" in admin.get("/admin").text
+
+
+def test_mdns_name_is_offered_after_the_ip(app):
+    admin = client(app, "jury", "jurypass")
+    admin.post("/admin/address", data={"url": "192.168.137.1:8000"})
+    app.state.mdns_host = "outpost.local"
+    try:
+        page = admin.get("/admin").text
+        assert page.index("http://192.168.137.1:8000/") < page.index("http://outpost.local:8000/")
+        make_users(admin, "mdns1, M One, Div A")
+        batch = admin.get("/admin/users").text.split("/admin/slips/")[1].split('"')[0]
+        assert "(or http://outpost.local:8000/)" in admin.get(f"/admin/slips/{batch}").text
+    finally:
+        app.state.mdns_host = None
+        admin.post("/admin/address", data={"url": ""})

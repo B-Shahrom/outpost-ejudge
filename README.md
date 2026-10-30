@@ -44,7 +44,10 @@ git clone https://github.com/B-Shahrom/outpost-ejudge && cd outpost-ejudge
 ./start.sh
 ```
 
-The script does the same steps. You can run either script again at any time:
+The script does the same steps. When Outpost runs directly on the laptop (not
+in Docker), it also announces itself as **http://outpost.local:8000/**. Windows,
+macOS, iOS and Linux open that name; some Android browsers don't, so the IP is
+always printed too. You can run either script again at any time:
 your data is kept in a Docker volume, and the admin is only created once. To
 stop, run `docker compose down`.
 

@@ -47,13 +47,35 @@ def cmd_serve(args, settings) -> int:
     else:
         for ip in lan_addresses():
             print(f"  contestants: http://{ip}:{settings.port}/")
+    announced = _announce(settings, lan_addresses)
+    if announced:
+        print(f"  also:        http://{announced.hostname}:{settings.port}/  (mDNS)")
     print(f"  admin:       http://localhost:{settings.port}/admin")
     try:
-        uvicorn.run(create_app(settings, pool), host=settings.host, port=settings.port,
-                    log_level="warning")
+        uvicorn.run(create_app(settings, pool, announced.hostname if announced else None),
+                    host=settings.host, port=settings.port, log_level="warning")
     finally:
         pool.shutdown()
+        if announced:
+            announced.close()
     return 0
+
+
+def _announce(settings, lan_addresses):
+    """Announce <name>.local for the address contestants use, if mDNS is on."""
+    import ipaddress
+    from urllib.parse import urlparse
+
+    from .mdns import announce
+    if not settings.mdns_name:
+        return None
+    host = urlparse(settings.public_url).hostname if settings.public_url else None
+    try:
+        ip = str(ipaddress.IPv4Address(host)) if host else None
+    except ValueError:
+        ip = None
+    ip = ip or next((a for a in lan_addresses() if not a.startswith("127.")), None)
+    return announce(ip, settings.port, settings.mdns_name) if ip else None
 
 
 def _lock_data_dir(settings):

@@ -93,7 +93,11 @@ Next:
   device files and its own box writable, then `chroot`. It costs nothing
   measurable in the load test.
 - [ ] PID namespace and cgroup memory accounting (the rest of what isolate does).
-- [ ] **mDNS**: announce `outpost.local` so nobody has to type an IP.
+- [x] **mDNS** (done): `serve` announces `outpost.local`. A second Outpost on
+  the same network gets `outpost-2.local`. The IP stays the main address on
+  the dashboard and slips because Android browsers don't reliably resolve
+  `.local`. It is off in containers, since Docker Desktop doesn't pass
+  multicast to the hotspot; `OUTPOST_MDNS=1` forces it on, `0` turns it off.
 - [ ] **Polygon API pull**: download packages straight from Polygon during prep
   (needs the internet only then). It can reuse Platform-Scraper's Polygon
   client.
