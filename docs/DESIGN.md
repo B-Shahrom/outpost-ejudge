@@ -156,5 +156,9 @@ Later:
   are one row, not n²/2 pairs), with side-by-side comparisons. The heat map
   shows, per test, how many contestants failed it and with which verdicts.
 - [ ] Balloons and print requests for in-person ICPC-style events.
-- [ ] Teams (several logins, one standings row).
+- [x] **Teams** (done): users get a team name (5th column of the import,
+  or the Users page), and a contest gets a *Team contest* switch. Then
+  standings have one row per team (members listed), every member's runs
+  count for it, and teammates share their submissions page and can read
+  each other's code, as at ICPC. Users without a team stay individual rows.
 - [ ] A built-in code editor (CodeMirror, vendored) instead of the textarea.

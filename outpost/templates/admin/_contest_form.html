@@ -13,5 +13,6 @@
     <label for="freeze">Freeze the standings for the last N minutes</label><input id="freeze" type="number" name="freeze" value="{{ c.freeze_minutes if c else 0 }}" min="0">
     <p><label class="inline"><input type="checkbox" name="visible" value="1" {{ 'checked' if not c or c.visible }}> Visible to contestants</label></p>
     <p><label class="inline"><input type="checkbox" name="public_standings" value="1" {{ 'checked' if not c or c.public_standings }}> Public standings</label></p>
+    <p><label class="inline"><input type="checkbox" name="team_mode" value="1" {{ 'checked' if c and c.team_mode }}> Team contest: one standings row per team (set users' teams on the Users page)</label></p>
   </div>
 </div>

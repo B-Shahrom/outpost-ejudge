@@ -296,3 +296,24 @@ def test_analysis_page(app, settings, problems):
     assert 'class="heat-cell' in page
     link = page.split('href="/admin/compare/')[1].split('"')[0]
     assert "diff" in admin.get(f"/admin/compare/{link}").text
+
+
+def test_team_contest(app, settings, problems):
+    admin = client(app, "jury", "jurypass")
+    start = datetime.fromtimestamp(time.time() - 600).strftime("%Y-%m-%dT%H:%M")
+    admin.post("/admin/contests", data={"code": "teams1", "name": "Team Cup", "start": start, "duration": 120,
+                                        "scoring": "icpc", "penalty": 20, "freeze": 0, "divisions": "TeamDiv",
+                                        "visible": "1", "public_standings": "1", "team_mode": "1"})
+    add_problem(admin, "teams1", problems["a-plus-b"])
+    make_users(admin, "tm1, Team Mate 1, TeamDiv, pw, Rockets\ntm2, Team Mate 2, TeamDiv, pw, Rockets\n"
+                      "solo2, Solo Two, TeamDiv, pw")
+    one, two, solo = client(app, "tm1", "pw"), client(app, "tm2", "pw"), client(app, "solo2", "pw")
+    one.post("/c/teams1/submit", data={"label": "A", "language": "cpp", "source": AB})
+    worker.drain(settings)
+    sid = one.get("/api/c/teams1/my-submissions").json()[0]["id"]
+    assert two.get("/api/c/teams1/my-submissions").json()[0]["id"] == sid   # shared with the teammate
+    assert two.get(f"/c/teams1/s/{sid}").status_code == 200                  # and so is the code
+    assert solo.get(f"/c/teams1/s/{sid}").status_code == 404
+    assert "Team submissions" in two.get("/c/teams1/submissions").text
+    board = solo.get("/c/teams1/standings").text
+    assert "Rockets" in board and "Team Mate 1, Team Mate 2" in board and "Solo Two" in board

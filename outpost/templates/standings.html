@@ -27,7 +27,7 @@
   {% for r in board.rows %}
   <tr>
     <td>{{ r.rank }}</td>
-    <td class="name">{{ r.name }}{% if r.division and board.divisions|length > 1 %} <span class="muted small">{{ r.division }}</span>{% endif %}</td>
+    <td class="name">{{ r.name }}{% if r.division and board.divisions|length > 1 %} <span class="muted small">{{ r.division }}</span>{% endif %}{% if r.team %}<span class="t muted">{{ r.members|join(', ') }}</span>{% endif %}</td>
     {% for p in board.problems %}{% set c = r.cells.get(p.id) %}
       {% if not c %}<td></td>
       {% elif board.scoring == 'icpc' %}

@@ -142,3 +142,24 @@ def test_resolver_data(mem):
     assert cat["1"]["solved"] and cat["1"]["tries"] == 1 and cat["1"]["penalty"] == 270 + 20
     assert not cat["2"]["solved"] and cat["2"]["tries"] == 1
     assert "1" not in d["reveal"].get(str(rows["Ann"]["id"]), {})
+
+
+def test_team_contest_one_row_per_team(mem):
+    con = contest(mem, "icpc")
+    mem.execute("UPDATE users SET team='Pamir' WHERE username IN ('ann', 'bob')")
+    mem.execute("UPDATE contests SET team_mode=1")
+    con = db.one(mem, "SELECT * FROM contests WHERE id=1")
+    sub(mem, 1, 1, 10, "wrong_answer")             # ann
+    sub(mem, 2, 1, 20, "accepted")                 # bob: same team, same problem
+    sub(mem, 1, 2, 30, "accepted")                 # ann
+    sub(mem, 3, 1, 5, "accepted")                  # cat, no team: a row of her own
+    rows = {r.name: r for r in scoring.standings(mem, con, live=True)["rows"]}
+    assert set(rows) == {"Pamir", "Cat"}
+    pamir = rows["Pamir"]
+    assert pamir.team and pamir.members == ["Ann", "Bob"]
+    assert pamir.solved == 2 and pamir.cells[1].tries == 1 and pamir.penalty == (20 + 20) + 30
+    assert rows["Cat"].cells[1].first             # cat solved A first
+    # The same people in an individual contest: three rows.
+    mem.execute("UPDATE contests SET team_mode=0")
+    con = db.one(mem, "SELECT * FROM contests WHERE id=1")
+    assert len(scoring.standings(mem, con, live=True)["rows"]) == 3

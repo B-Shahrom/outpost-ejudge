@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     display_name  TEXT NOT NULL DEFAULT '',
     division      TEXT NOT NULL DEFAULT '',
+    team          TEXT NOT NULL DEFAULT '',         -- team contests: one standings row per team
     is_admin      INTEGER NOT NULL DEFAULT 0,
     session_token TEXT,
     session_ip    TEXT,
@@ -55,6 +56,7 @@ CREATE TABLE IF NOT EXISTS contests (
     visible          INTEGER NOT NULL DEFAULT 1,
     public_standings INTEGER NOT NULL DEFAULT 1,
     unfrozen         INTEGER NOT NULL DEFAULT 0,
+    team_mode        INTEGER NOT NULL DEFAULT 0,        -- standings by team, not by user
     created_at       REAL NOT NULL
 );
 
@@ -125,6 +127,8 @@ def connect(path: Path) -> sqlite3.Connection:
 MIGRATIONS = [
     ("submissions", "judged_by", "TEXT"),
     ("submissions", "lease_until", "REAL"),
+    ("users", "team", "TEXT NOT NULL DEFAULT ''"),
+    ("contests", "team_mode", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 

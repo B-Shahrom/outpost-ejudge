@@ -40,10 +40,12 @@ class Cell:
 
 @dataclass
 class Row:
-    user_id: int
-    username: str
+    user_id: int           # a team row: its first member's id (unique per row all the same)
+    username: str          # a team row: the team's name
     name: str
     division: str
+    members: list[str] = field(default_factory=list)  # display names (team rows)
+    team: bool = False
     cells: dict[int, Cell] = field(default_factory=dict)
     solved: int = 0
     score: float = 0.0
@@ -72,7 +74,7 @@ def standings(conn: sqlite3.Connection, contest: sqlite3.Row, *, live: bool,
         JOIN problems p ON p.id = cp.problem_id
         WHERE cp.contest_id=? ORDER BY cp.position""", (contest["id"],))
 
-    users_sql = "SELECT id, username, display_name, division FROM users WHERE is_admin=0"
+    users_sql = "SELECT id, username, display_name, division, team FROM users WHERE is_admin=0"
     params: list = []
     if divisions:
         users_sql += f" AND division IN ({','.join('?' * len(divisions))})"
@@ -80,8 +82,19 @@ def standings(conn: sqlite3.Connection, contest: sqlite3.Row, *, live: bool,
     if division:
         users_sql += " AND division=?"
         params.append(division)
-    rows = {u["id"]: Row(u["id"], u["username"], u["display_name"] or u["username"], u["division"])
-            for u in db.all_(conn, users_sql, params)}
+    # One row per contestant, or per team in a team contest (a member without
+    # a team still gets a row of their own).
+    team_mode = bool(contest["team_mode"])
+    rows: dict[str, Row] = {}
+    owner: dict[int, str] = {}  # user id -> row key
+    for u in db.all_(conn, users_sql + " ORDER BY id", params):
+        shown = u["display_name"] or u["username"]
+        key = f"t:{u['team']}" if team_mode and u["team"] else f"u:{u['id']}"
+        if key not in rows:
+            rows[key] = (Row(u["id"], u["team"], u["team"], u["division"], team=True) if key.startswith("t:")
+                         else Row(u["id"], u["username"], shown, u["division"]))
+        rows[key].members.append(shown)
+        owner[u["id"]] = key
 
     subs = db.all_(conn, """
         SELECT id, user_id, problem_id, submitted_at, status, verdict, score, max_score
@@ -90,9 +103,9 @@ def standings(conn: sqlite3.Connection, contest: sqlite3.Row, *, live: bool,
 
     scoring = contest["scoring"]
     pen = contest["penalty_minutes"]
-    first_solve: dict[int, tuple[float, int]] = {}
+    first_solve: dict[int, tuple[float, str]] = {}
     for s in subs:
-        row = rows.get(s["user_id"])
+        row = rows.get(owner.get(s["user_id"], ""))
         if row is None:
             continue
         cell = row.cells.setdefault(s["problem_id"], Cell())
@@ -112,7 +125,7 @@ def standings(conn: sqlite3.Connection, contest: sqlite3.Row, *, live: bool,
                 cell.penalty = minute + cell.tries * pen
                 best = first_solve.get(s["problem_id"])
                 if best is None or s["submitted_at"] < best[0]:
-                    first_solve[s["problem_id"]] = (s["submitted_at"], s["user_id"])
+                    first_solve[s["problem_id"]] = (s["submitted_at"], owner[s["user_id"]])
             else:
                 cell.tries += 1
         else:
@@ -124,8 +137,8 @@ def standings(conn: sqlite3.Connection, contest: sqlite3.Row, *, live: bool,
                 cell.solved = s["max_score"] is not None and score >= s["max_score"]
             cell.runs += 1
 
-    for pid, (_, uid) in first_solve.items():
-        rows[uid].cells[pid].first = True
+    for pid, (_, key) in first_solve.items():
+        rows[key].cells[pid].first = True
 
     for row in rows.values():
         for cell in row.cells.values():
@@ -154,7 +167,7 @@ def standings(conn: sqlite3.Connection, contest: sqlite3.Row, *, live: bool,
             row.rank = n + 1
 
     return {"problems": problems, "rows": ordered, "frozen": frozen,
-            "scoring": scoring, "divisions": divisions}
+            "scoring": scoring, "divisions": divisions, "teams": team_mode}
 
 
 def resolver_data(conn: sqlite3.Connection, contest: sqlite3.Row) -> dict:

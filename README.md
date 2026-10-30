@@ -97,7 +97,8 @@ it every time.
    solution on every test and reports its slowest time *on this machine*, so you
    can see whether the time limit still fits this hardware.
 2. **Users → Add contestants:** one line per person
-   (`username, full name, division[, password]`). Missing passwords are
+   (`username, full name, division[, password[, team]]`). In a contest marked
+   *Team contest*, members of a team share one standings row and their runs. Missing passwords are
    generated, and **Print login slips** gives a page of cut-out slips.
    `outpost users people.csv` does the same from the command line.
 3. **Contests → New contest:** start time, length, scoring (ICPC / IOI / IOI

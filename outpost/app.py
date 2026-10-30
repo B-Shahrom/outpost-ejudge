@@ -193,10 +193,22 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
         return render(request, "contest.html", c, contest=contest, problems=problems, mine=mine,
                       news=news)
 
+    def side(c, contest, u) -> list[int]:
+        """Whose runs this contestant sees as their own: theirs, or their team's
+        in a team contest (teammates share progress and code, as at ICPC)."""
+        if contest["team_mode"] and u["team"]:
+            return [r["id"] for r in db.all_(c, "SELECT id FROM users WHERE team=? AND is_admin=0", (u["team"],))]
+        return [u["id"]]
+
+    def in_side(ids: list[int]) -> str:
+        return f"IN ({','.join('?' * len(ids))})"
+
     def my_problem_status(c, contest, u) -> dict[int, dict]:
         out: dict[int, dict] = {}
-        for s in db.all_(c, """SELECT problem_id, status, verdict, score, max_score FROM submissions
-                               WHERE contest_id=? AND user_id=? ORDER BY id""", (contest["id"], u["id"])):
+        ids = side(c, contest, u)
+        for s in db.all_(c, f"""SELECT problem_id, status, verdict, score, max_score FROM submissions
+                               WHERE contest_id=? AND user_id {in_side(ids)} ORDER BY id""",
+                           (contest["id"], *ids)):
             st = out.setdefault(s["problem_id"], {"tries": 0, "solved": False, "best": None,
                                                   "max": s["max_score"], "pending": False})
             st["tries"] += 1
@@ -334,13 +346,14 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
         c = conn(request)
         u = need_user(request, c)
         contest = contest_by_code(c, code, u)
-        subs = db.all_(c, """
+        ids = side(c, contest, u)
+        subs = db.all_(c, f"""
             SELECT s.id, s.submitted_at, s.language, s.status, s.verdict, s.score, s.max_score,
-                   s.time_ms, s.memory_kb, s.failed_test, cp.label, p.name
-            FROM submissions s JOIN problems p ON p.id=s.problem_id
+                   s.time_ms, s.memory_kb, s.failed_test, cp.label, p.name, u.username
+            FROM submissions s JOIN problems p ON p.id=s.problem_id JOIN users u ON u.id=s.user_id
             LEFT JOIN contest_problems cp ON cp.contest_id=s.contest_id AND cp.problem_id=s.problem_id
-            WHERE s.contest_id=? AND s.user_id=? ORDER BY s.id DESC""", (contest["id"], u["id"]))
-        return render(request, "submissions.html", c, contest=contest, subs=subs)
+            WHERE s.contest_id=? AND s.user_id {in_side(ids)} ORDER BY s.id DESC""", (contest["id"], *ids))
+        return render(request, "submissions.html", c, contest=contest, subs=subs, team=len(ids) > 1)
 
     @app.get("/c/{code}/s/{sid}", response_class=HTMLResponse)
     def submission_page(request: Request, code: str, sid: int):
@@ -352,7 +365,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
                            LEFT JOIN contest_problems cp ON cp.contest_id=s.contest_id
                                 AND cp.problem_id=s.problem_id
                            WHERE s.id=? AND s.contest_id=?""", (sid, contest["id"]))
-        if sub is None or (sub["user_id"] != u["id"] and not u["is_admin"]):
+        if sub is None or (sub["user_id"] not in side(c, contest, u) and not u["is_admin"]):
             raise HTTPException(404)
         return render(request, "submission.html", c, contest=contest, sub=sub, admin_view=False)
 
@@ -361,10 +374,11 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
         c = conn(request)
         u = need_user(request, c)
         contest = contest_by_code(c, code, u)
-        rows = db.all_(c, """SELECT id, status, verdict, score, max_score, time_ms, memory_kb,
+        ids = side(c, contest, u)
+        rows = db.all_(c, f"""SELECT id, status, verdict, score, max_score, time_ms, memory_kb,
                                     failed_test FROM submissions
-                             WHERE contest_id=? AND user_id=? ORDER BY id DESC LIMIT 100""",
-                       (contest["id"], u["id"]))
+                             WHERE contest_id=? AND user_id {in_side(ids)} ORDER BY id DESC LIMIT 100""",
+                       (contest["id"], *ids))
         return [dict(r) | {"verdict_label": VERDICT_LABELS.get(r["verdict"] or "", "")} for r in rows]
 
     @app.get("/c/{code}/standings", response_class=HTMLResponse)
@@ -630,6 +644,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
             "divisions_json": db.dumps(divisions),
             "visible": int(bool(form.get("visible"))),
             "public_standings": int(bool(form.get("public_standings"))),
+            "team_mode": int(bool(form.get("team_mode"))),
         }
 
     @app.post("/admin/contests")
@@ -952,13 +967,14 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
             username, name = rec[0], rec[1] if len(rec) > 1 else ""
             division = rec[2] if len(rec) > 2 else ""
             password = rec[3] if len(rec) > 3 and rec[3] else auth.generate_password()
+            team = rec[4] if len(rec) > 4 else ""
             if db.one(c, "SELECT 1 FROM users WHERE username=?", (username,)):
                 skipped.append(username)
                 continue
             auth.create_user(c, username, password, display_name=name, division=division,
-                             is_admin=bool(admin))
+                             is_admin=bool(admin), team=team)
             created.append({"username": username, "name": name, "division": division,
-                            "password": password})
+                            "password": password, "team": team})
         remember_batch(request, created)
         flash(request, f"Created {len(created)} account(s)"
                        + (f"; skipped existing: {', '.join(skipped)}" if skipped else "") + ".")
@@ -966,7 +982,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.post("/admin/users/{uid}")
     def admin_user_action(request: Request, uid: int, action: str = Form(...),
-                          division: str = Form(""), display_name: str = Form("")):
+                          division: str = Form(""), display_name: str = Form(""), team: str = Form("")):
         c = conn(request)
         me = need_admin(request, c)
         target = db.one(c, "SELECT * FROM users WHERE id=?", (uid,))
@@ -983,8 +999,8 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
             c.execute("UPDATE users SET session_token=NULL WHERE id=?", (uid,))
             flash(request, f"Signed {target['username']} out.")
         elif action == "edit":
-            c.execute("UPDATE users SET division=?, display_name=? WHERE id=?",
-                      (division.strip(), display_name.strip(), uid))
+            c.execute("UPDATE users SET division=?, display_name=?, team=? WHERE id=?",
+                      (division.strip(), display_name.strip(), team.strip(), uid))
             flash(request, "Saved.")
         elif action == "delete" and uid != me["id"]:
             c.execute("DELETE FROM users WHERE id=?", (uid,))

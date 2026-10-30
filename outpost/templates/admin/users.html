@@ -14,17 +14,17 @@
 <div class="panel">
   <h3 style="margin-top:0">Add contestants</h3>
   <form method="post" action="/admin/users/import">
-    <label for="rows">One per line: <span class="mono">username, full name, division[, password]</span> — a missing password is generated</label>
+    <label for="rows">One per line: <span class="mono">username, full name, division[, password[, team]]</span> — a missing password is generated; the team matters only in team contests</label>
     <textarea id="rows" name="rows" rows="6" class="code" placeholder="ali, Ali Karimov, Division A&#10;sara, Sara Rahimova, Division B"></textarea>
     <p class="row"><button class="primary" type="submit">Create accounts</button><label class="inline"><input type="checkbox" name="admin" value="1"> as admins (jury)</label></p>
   </form>
 </div>
 <div class="panel table-wrap"><table>
-  <tr><th>Username</th><th>Name</th><th>Division</th><th>Signed in from</th><th></th></tr>
+  <tr><th>Username</th><th>Name · division · team</th><th></th><th>Signed in from</th><th></th></tr>
   {% for u in users %}<tr>
     <td class="mono">{{ u.username }}{% if u.is_admin %} <span class="pill">admin</span>{% endif %}</td>
     <td colspan="2"><form method="post" action="/admin/users/{{ u.id }}" class="row"><input type="hidden" name="action" value="edit">
-      <input type="text" name="display_name" value="{{ u.display_name }}" size="18"><input type="text" name="division" value="{{ u.division }}" size="12">
+      <input type="text" name="display_name" value="{{ u.display_name }}" size="18" aria-label="Name"><input type="text" name="division" value="{{ u.division }}" size="12" aria-label="Division" placeholder="division"><input type="text" name="team" value="{{ u.team }}" size="12" aria-label="Team" placeholder="team">
       <button type="submit" class="link">save</button></form></td>
     <td class="small mono">{{ u.session_ip or '' }}</td>
     <td class="row">

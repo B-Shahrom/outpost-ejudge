@@ -1,15 +1,16 @@
 {% extends "base.html" %}
 {% block title %}My submissions · Outpost{% endblock %}
 {% block content %}
-<h1>My submissions</h1>
+<h1>{{ 'Team submissions' if team else 'My submissions' }}</h1>
 <div class="panel table-wrap">
 {% if subs %}
 <table data-poll-submissions="/api/c/{{ contest.code }}/my-submissions"{% if contest.scoring == 'icpc' %} data-icpc="1"{% endif %}>
-  <tr><th>#</th><th>Time</th><th>Problem</th><th>Language</th><th>Verdict</th>{% if contest.scoring != 'icpc' %}<th class="num">Score</th>{% endif %}<th class="num">Time</th><th class="num">Memory</th></tr>
+  <tr><th>#</th><th>Time</th>{% if team %}<th>By</th>{% endif %}<th>Problem</th><th>Language</th><th>Verdict</th>{% if contest.scoring != 'icpc' %}<th class="num">Score</th>{% endif %}<th class="num">Time</th><th class="num">Memory</th></tr>
   {% for s in subs %}
   <tr id="sub-{{ s.id }}" data-status="{{ s.status }}">
     <td><a href="/c/{{ contest.code }}/s/{{ s.id }}">{{ s.id }}</a></td>
     <td class="muted">{{ s.submitted_at|clock }}</td>
+    {% if team %}<td class="mono small">{{ s.username }}</td>{% endif %}
     <td>{{ s.label }}. {{ s.name }}</td>
     <td>{{ LANGS[s.language].name if s.language in LANGS else s.language }}</td>
     <td>{% if s.status == 'done' %}<span class="v {{ s.verdict }}">{{ s.verdict|verdict }}{% if contest.scoring == 'icpc' and s.failed_test and s.verdict != 'accepted' %} on test {{ s.failed_test }}{% endif %}</span>{% else %}<span class="v pending">{{ 'Judging…' if s.status == 'judging' else 'In queue' }}</span>{% endif %}</td>
