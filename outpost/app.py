@@ -7,6 +7,7 @@ from the internet, because the room may not have any.
 from __future__ import annotations
 
 import csv
+import hmac
 import io
 import json
 import os
@@ -69,6 +70,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
     app.state.settings = settings
     app.state.pool = pool
     app.state.mdns_host = mdns_host  # e.g. "outpost.local", when announced
+    app.state.remote_seen: dict[str, dict] = {}  # remote judge name -> {last, judged}
     app.state.imports: dict[str, dict] = {}
     # New accounts with their plain passwords, kept in memory only (never in
     # the database) until the admin has printed the slips.
@@ -419,10 +421,14 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
         c = conn(request)
         need_admin(request, c)
         urls, source = contestant_urls(c)
+        server_url = urls[0] if urls else f"http://<this laptop's address>:{settings.port}/"
+        remotes = sorted(((n, s) for n, s in app.state.remote_seen.items()), key=lambda x: x[0])
         qr = segno.make(urls[0]).svg_inline(scale=5, dark="#111", light="#fff", omitsize=True) if urls else ""
         queue = db.one(c, "SELECT COUNT(*) AS n FROM submissions WHERE status!='done'")["n"]
         pool = app.state.pool
         return render(request, "admin/home.html", c, urls=urls, qr=qr, queue=queue, url_source=source,
+                      worker_cmd=f"sudo outpost worker --server {server_url} --token {worker_token(c)}",
+                      remotes=remotes,
                       saved_url=db.get_setting(c, "public_url"),
                       workers=pool.count if pool else 0,
                       isolated=pool.isolated if pool else None,
@@ -955,6 +961,73 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
                          created_at, answered_at) VALUES (?, NULL, '', ?, 1, ?, ?)""",
                       (contest["id"], answer.strip(), time.time(), time.time()))
         raise Redirect(f"/admin/contests/{code}/clarifications")
+
+    # -- remote judges ---------------------------------------------------------------
+    def worker_token(c) -> str:
+        token = db.get_setting(c, "worker_token")
+        if not token:
+            token = auth.generate_password(24)
+            db.set_setting(c, "worker_token", token)
+        return token
+
+    def need_worker(request: Request, c) -> None:
+        sent = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+        if not sent or not hmac.compare_digest(sent, worker_token(c)):
+            raise HTTPException(401, "bad worker token")
+
+    @app.post("/admin/workers/new-token")
+    def admin_new_worker_token(request: Request):
+        c = conn(request)
+        need_admin(request, c)
+        db.set_setting(c, "worker_token", auth.generate_password(24))
+        flash(request, "New judge token: judge laptops with the old one are locked out.")
+        raise Redirect("/admin")
+
+    @app.post("/api/worker/claim")
+    async def worker_claim(request: Request):
+        from .worker import claim, job_for
+        c = conn(request)
+        need_worker(request, c)
+        name = "remote:" + str((await request.json()).get("name", "?"))[:80]
+        app.state.remote_seen.setdefault(name, {"judged": 0})["last"] = time.time()
+        sub_id = claim(c, name)
+        if sub_id is None:
+            return Response(status_code=204)
+        sub, prob, mode = job_for(c, sub_id)
+        pdir = settings.problems_dir / prob["slug"]
+        return {"id": sub_id, "language": sub["language"], "source": sub["source"], "mode": mode,
+                "problem": {"slug": prob["slug"], "version": problem_version(prob),
+                            "time_limit_ms": prob["time_limit_ms"], "memory_limit_mb": prob["memory_limit_mb"],
+                            "tests": db.loads(prob["tests_json"], []), "groups": db.loads(prob["groups_json"], []),
+                            "interactive": bool(prob["interactive"]), "checker": prob["checker"]}} \
+            if prob and pdir.exists() else {"id": sub_id, "error": "problem missing"}
+
+    def problem_version(prob) -> str:
+        """Changes whenever the problem is (re)imported: the tests folder is new then."""
+        tests = settings.problems_dir / prob["slug"] / "tests"
+        return f"{prob['id']}-{tests.stat().st_mtime_ns if tests.exists() else 0}"
+
+    @app.get("/api/worker/problem/{slug}")
+    def worker_problem(request: Request, slug: str):
+        from .remote import problem_archive
+        c = conn(request)
+        need_worker(request, c)
+        if not db.one(c, "SELECT 1 FROM problems WHERE slug=?", (slug,)):
+            raise HTTPException(404)
+        return Response(problem_archive(settings.problems_dir / slug), media_type="application/zip")
+
+    @app.post("/api/worker/result/{sid}")
+    async def worker_result(request: Request, sid: int):
+        from .worker import save_outcome
+        c = conn(request)
+        need_worker(request, c)
+        body = await request.json()
+        name = "remote:" + str(body.get("name", "?"))[:80]
+        saved = save_outcome(c, sid, name, body["outcome"])
+        seen = app.state.remote_seen.setdefault(name, {"judged": 0})
+        seen["last"] = time.time()
+        seen["judged"] += int(saved)
+        return {"saved": saved}
 
     @app.get("/healthz", response_class=PlainTextResponse)
     def health():

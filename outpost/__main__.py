@@ -6,6 +6,7 @@
     outpost users FILE.csv             create contestants from username,name,division[,password]
     outpost polygon list|import|build  work with your Polygon account (needs the internet)
     outpost archive export|import ...  a whole contest as one zip (move, back up, share)
+    outpost worker --server URL --token T  judge for another Outpost over the network
     outpost selftest                   check compilers and the sandbox before a contest
     outpost judge                      judge everything pending, then exit (no server)
 """
@@ -243,6 +244,12 @@ def cmd_archive(args, settings) -> int:
     return 0
 
 
+def cmd_worker(args, settings) -> int:
+    from .remote import serve_forever
+    serve_forever(args.server, args.token, settings, args.workers or settings.workers)
+    return 0
+
+
 def cmd_selftest(args, settings) -> int:
     from .selftest import run
     return run()
@@ -299,6 +306,12 @@ def main(argv: list[str] | None = None) -> int:
     ar.add_argument("--problems-only", action="store_true",
                     help="export: leave users, submissions and questions out")
     ar.set_defaults(fn=cmd_archive)
+
+    w = sub.add_parser("worker", help="judge for another Outpost over the network")
+    w.add_argument("--server", required=True, help="the server's address, e.g. http://192.168.137.1:8000/")
+    w.add_argument("--token", required=True, help="from the server's admin dashboard")
+    w.add_argument("--workers", type=int, help="judge processes (default: cores - 1)")
+    w.set_defaults(fn=cmd_worker)
 
     t = sub.add_parser("selftest", help="check compilers and the sandbox on this machine")
     t.set_defaults(fn=cmd_selftest)

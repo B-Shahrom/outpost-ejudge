@@ -65,6 +65,19 @@ Run it as root: that is what lets the sandbox switch each run to its own user
 and give it an empty network namespace. Without root, Outpost still works but
 with weaker isolation, and both the self-test and the dashboard say so.
 
+### More judging power
+
+For a big room, other laptops can judge too. The dashboard's **Judge laptops**
+panel shows a command with a token. Run it on any laptop on the same network
+that has Outpost installed, g++, and root:
+
+```bash
+sudo outpost worker --server http://192.168.137.1:8000/ --token <token>
+```
+
+If such a laptop dies or leaves mid-contest, its unfinished submissions go back
+to the queue after 10 minutes.
+
 ### Before every contest
 
 `outpost selftest` (or `docker compose exec outpost outpost selftest`) judges

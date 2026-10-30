@@ -125,8 +125,16 @@ Next:
   leaves nothing behind. A *problem set only* export shares a contest without
   contestants' data. `outpost archive export|import`, or the buttons on the
   admin pages.
-- [ ] **Remote judge workers**: other laptops on the network join with
-  `outpost worker --server http://…` to add judging capacity.
+- [x] **Remote judges** (done): `outpost worker --server URL --token T` on
+  another laptop (the dashboard shows the command and token). It claims over
+  HTTP, caches each problem's tests by version, rebuilds checkers for its own
+  machine, and judges with the same sandbox. Every claim, local or remote, has
+  a 10-minute lease: a laptop that dies mid-judge just puts the submission
+  back in the queue. A late result is dropped if the judge no longer holds
+  the lease, so it can't overwrite a rejudge. Remote judges use their own
+  boxes and uids, so one can even run on the server laptop. Tested with
+  `serve --workers 0` and a separate worker: 227 runs from the load test,
+  all judged remotely, all verdicts as expected.
 
 Later:
 - [ ] ICPC-style **resolver**: reveal the frozen hour row by row on the projector.

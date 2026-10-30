@@ -85,7 +85,9 @@ CREATE TABLE IF NOT EXISTS submissions (
     compile_output     TEXT,
     test_results_json  TEXT,
     group_results_json TEXT,
-    judged_at          REAL
+    judged_at          REAL,
+    judged_by          TEXT,                         -- which judge holds or held it
+    lease_until        REAL                          -- back to the queue if not done by then
 );
 CREATE INDEX IF NOT EXISTS submissions_queue ON submissions(status, id);
 CREATE INDEX IF NOT EXISTS submissions_contest ON submissions(contest_id, user_id);
@@ -118,9 +120,21 @@ def connect(path: Path) -> sqlite3.Connection:
     return conn
 
 
+# Columns added after a table was first released: (table, column, declaration).
+# CREATE TABLE IF NOT EXISTS leaves an older database's tables as they were.
+MIGRATIONS = [
+    ("submissions", "judged_by", "TEXT"),
+    ("submissions", "lease_until", "REAL"),
+]
+
+
 def init(path: Path) -> None:
     conn = connect(path)
     conn.executescript(SCHEMA)
+    for table, column, decl in MIGRATIONS:
+        have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in have:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
     conn.close()
 
 

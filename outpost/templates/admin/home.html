@@ -14,6 +14,18 @@
   <div class="flash" style="margin-top:16px">{% if isolated is false %}Network isolation is <b>off</b>{% endif %}{% if isolated is false and jailed is false %} and the {% elif jailed is false %}The {% endif %}{% if jailed is false %}filesystem jail is <b>off</b>{% endif %}: this machine doesn't allow the namespaces they need. Run as root on Linux, or use the Docker setup, before a real contest.</div>
   {% endif %}
   <div class="panel" style="margin-top:16px">
+    <div class="row"><h3 style="margin:0">Judge laptops</h3><span class="spacer"></span>
+      <form method="post" action="/admin/workers/new-token"><button class="link" type="submit" data-confirm="Lock out every judge laptop using the current token?">new token</button></form></div>
+    <p class="small muted">To add judging power, run this on another laptop on the same network (it needs Outpost installed, g++ and root):</p>
+    <pre class="small" style="white-space:pre-wrap;word-break:break-all">{{ worker_cmd }}</pre>
+    {% if remotes %}
+    <table class="small" style="margin-top:8px"><tr><th>Remote judge</th><th class="num">Judged</th><th>Last seen</th></tr>
+      {% for name, s in remotes %}<tr><td class="mono">{{ name[7:] }}</td><td class="num">{{ s.judged }}</td>
+        <td>{% if now - s.last < 15 %}<span class="pill ok">online</span>{% else %}{{ s.last|clock }}{% endif %}</td></tr>{% endfor %}
+    </table>
+    {% endif %}
+  </div>
+  <div class="panel" style="margin-top:16px">
     <h3 style="margin-top:0">Contests</h3>
     {% if contests %}
     <table>
