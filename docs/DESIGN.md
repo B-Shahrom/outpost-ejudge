@@ -137,7 +137,12 @@ Next:
   all judged remotely, all verdicts as expected.
 
 Later:
-- [ ] ICPC-style **resolver**: reveal the frozen hour row by row on the projector.
+- [x] ICPC-style **resolver** (done): admin contest page → *Resolver
+  (projector)*. It starts from the frozen board and reveals the lowest-ranked
+  team's leftmost hidden problem: the cell is highlighted, then flipped, and
+  the row slides to its new place. Repeat until nothing is hidden. Space or a
+  click steps; A plays it automatically. It works even after unfreezing.
+  Checked in Chromium: the order it ends on equals the live standings.
 - [ ] **electicode bridge**: import a group's students as users, and push final
   results or a contest's problems back and forth (via Platform-Scraper's admin
   API knowledge).

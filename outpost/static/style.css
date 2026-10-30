@@ -130,3 +130,10 @@ body.projector table.board { font-size: 20px; }
   header.top, .no-print { display: none !important; }
   body, main { background: #fff; padding: 0; max-width: none; }
 }
+
+/* resolver (projector) */
+body.resolver-page table.board td.cell-focus { outline: 4px solid var(--accent); outline-offset: -4px; }
+body.resolver-page table.board tr.resolving td { background-color: var(--info-bg); }
+body.resolver-page table.board tr.resolving td.cell-pending { background-color: var(--warn-bg); }
+body.resolver-page #resolver { cursor: pointer; }
+@media print { .resolver-help { display: none; } }

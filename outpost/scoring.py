@@ -59,10 +59,12 @@ def is_frozen(contest: sqlite3.Row, now: float) -> bool:
 
 
 def standings(conn: sqlite3.Connection, contest: sqlite3.Row, *, live: bool,
-              division: str | None = None, now: float | None = None) -> dict:
-    """Compute the board. ``live`` (admins) ignores the freeze."""
+              division: str | None = None, now: float | None = None,
+              force_frozen: bool = False) -> dict:
+    """Compute the board. ``live`` (admins) ignores the freeze; ``force_frozen``
+    shows the frozen board even after the contest was unfrozen (the resolver)."""
     now = db.now() if now is None else now
-    frozen = is_frozen(contest, now) and not live
+    frozen = force_frozen or (is_frozen(contest, now) and not live)
     freeze_at = contest["end_at"] - contest["freeze_minutes"] * 60
     divisions = db.loads(contest["divisions_json"], [])
     problems = db.all_(conn, """
@@ -153,6 +155,34 @@ def standings(conn: sqlite3.Connection, contest: sqlite3.Row, *, live: bool,
 
     return {"problems": problems, "rows": ordered, "frozen": frozen,
             "scoring": scoring, "divisions": divisions}
+
+
+def resolver_data(conn: sqlite3.Connection, contest: sqlite3.Row) -> dict:
+    """The frozen ICPC board, plus the final result of every cell the freeze hid.
+
+    The resolver page replays them: lowest-ranked team with a hidden cell
+    first, its leftmost hidden problem, re-rank, repeat.
+    """
+    frozen = standings(conn, contest, live=False, force_frozen=True)
+    final = standings(conn, contest, live=True)
+    final_cells = {r.user_id: r.cells for r in final["rows"]}
+
+    def cell(c: Cell | None) -> dict:
+        if c is None:
+            return {"solved": False, "tries": 0, "pending": 0, "minute": None, "penalty": 0, "first": False}
+        return {"solved": c.solved, "tries": c.tries, "pending": c.pending, "minute": c.minute,
+                "penalty": c.penalty, "first": c.first}
+
+    rows, reveal = [], {}
+    for r in frozen["rows"]:
+        rows.append({"id": r.user_id, "name": r.name, "division": r.division, "solved": r.solved,
+                     "penalty": r.penalty, "cells": {str(p["id"]): cell(r.cells.get(p["id"]))
+                                                     for p in frozen["problems"]}})
+        for pid, c in r.cells.items():
+            if c.pending:
+                reveal.setdefault(str(r.user_id), {})[str(pid)] = cell(final_cells.get(r.user_id, {}).get(pid))
+    return {"problems": [{"id": str(p["id"]), "label": p["label"], "name": p["name"]} for p in frozen["problems"]],
+            "rows": rows, "reveal": reveal, "penalty_minutes": contest["penalty_minutes"]}
 
 
 def to_csv(board: dict) -> str:

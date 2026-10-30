@@ -109,7 +109,8 @@ it every time.
 5. During the contest, use **Questions** to answer clarifications (privately or
    for everyone) and post announcements. **Submissions** filters and rejudges.
    Open **Standings → Projector view** on the wall screen.
-6. At the end, **Unfreeze**, then export standings (CSV) and every submission
+6. At the end, open **Resolver (projector)** for the ICPC-style reveal of the
+   frozen hour, then **Unfreeze**, and export standings (CSV) and every submission
    with its source (JSON). **Whole contest (archive)** saves everything in one
    zip: keep it as a backup, or import it on another laptop. **Problem set
    only** gives the same zip without contestants, to reuse or share.

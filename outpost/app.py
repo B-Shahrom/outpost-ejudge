@@ -715,6 +715,27 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
         flash(request, "Standings unfrozen." if value else "Freeze restored.")
         raise Redirect(f"/admin/contests/{code}")
 
+    @app.get("/admin/contests/{code}/resolver", response_class=HTMLResponse)
+    def admin_resolver(request: Request, code: str):
+        c = conn(request)
+        u = need_admin(request, c)
+        contest = contest_by_code(c, code, u)
+        problem = None
+        if contest["scoring"] != "icpc":
+            problem = "The resolver replays ICPC standings; this contest is scored " + \
+                      SCORING_LABELS[contest["scoring"]] + "."
+        elif not contest["freeze_minutes"]:
+            problem = "This contest has no freeze, so there is nothing to reveal."
+        elif time.time() < contest["end_at"]:
+            problem = "The contest is still running. The resolver is for after the end."
+        return render(request, "admin/resolver.html", c, contest=contest, admin_page=True, problem=problem)
+
+    @app.get("/admin/contests/{code}/resolver.json")
+    def admin_resolver_json(request: Request, code: str):
+        c = conn(request)
+        u = need_admin(request, c)
+        return scoring.resolver_data(c, contest_by_code(c, code, u))
+
     @app.get("/admin/contests/{code}/standings.csv")
     def admin_standings_csv(request: Request, code: str):
         c = conn(request)

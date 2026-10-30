@@ -265,3 +265,13 @@ def test_archive_download_and_upload(app):
         "icpc1-copy" in admin.get("/admin/contests/icpc1-copy").text
     again = admin.post("/admin/archive/import", files={"archive": ("a.zip", r.content)}, data={"code": "icpc1-copy"})
     assert again.headers["location"] == "/admin/contests"
+
+
+def test_resolver_page_rules(app):
+    admin = client(app, "jury", "jurypass")
+    assert "no freeze" in admin.get("/admin/contests/icpc1/resolver").text
+    assert "IOI" in admin.get("/admin/contests/div-only/resolver").text
+    ann = client(app, "ann", "pw-ann")
+    assert ann.get("/admin/contests/icpc1/resolver.json").status_code == 403
+    data = admin.get("/admin/contests/icpc1/resolver.json").json()
+    assert {"problems", "rows", "reveal", "penalty_minutes"} <= set(data)

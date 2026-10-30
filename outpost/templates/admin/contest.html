@@ -37,6 +37,7 @@
     {% if contest.freeze_minutes %}
       <form method="post" action="/admin/contests/{{ contest.code }}/unfreeze"><input type="hidden" name="value" value="{{ 0 if contest.unfrozen else 1 }}">
       <button type="submit" class="{{ '' if contest.unfrozen else 'primary' }}">{{ 'Freeze again' if contest.unfrozen else 'Unfreeze standings' }}</button></form>
+      {% if contest.scoring == 'icpc' %}<a class="btn" href="/admin/contests/{{ contest.code }}/resolver" target="_blank">Resolver (projector)</a>{% endif %}
     {% endif %}
   </div>
   <p class="small muted">{% if not contest.freeze_minutes %}No freeze set.{% elif contest.unfrozen %}Unfrozen: everyone sees final results.{% elif frozen %}Frozen now: contestants see the board as it was {{ contest.freeze_minutes }} minutes before the end.{% else %}Freezes {{ contest.freeze_minutes }} minutes before the end.{% endif %}

@@ -122,3 +122,23 @@ def test_csv(mem):
     sub(mem, 1, 1, 12, "accepted")
     text = scoring.to_csv(scoring.standings(mem, con, live=True))
     assert text.splitlines()[1].startswith("1,ann,Ann,A,+1 12,")
+
+
+def test_resolver_data(mem):
+    con = contest(mem, "icpc", freeze=60)
+    sub(mem, 1, 1, 10, "accepted")                 # before the freeze: visible
+    sub(mem, 2, 1, 260, "accepted")                # hidden
+    sub(mem, 3, 1, 255, "wrong_answer")            # hidden
+    sub(mem, 3, 1, 270, "accepted")                # hidden
+    sub(mem, 3, 2, 280, "wrong_answer")            # hidden, stays unsolved
+    mem.execute("UPDATE contests SET unfrozen=1")  # even after unfreezing, the resolver replays
+    con = db.one(mem, "SELECT * FROM contests WHERE id=1")
+    d = scoring.resolver_data(mem, con)
+    rows = {r["name"]: r for r in d["rows"]}
+    assert rows["Ann"]["solved"] == 1 and rows["Bob"]["solved"] == 0 and rows["Cat"]["solved"] == 0
+    assert rows["Cat"]["cells"]["1"]["pending"] == 2
+    bob, cat = d["reveal"][str(rows["Bob"]["id"])], d["reveal"][str(rows["Cat"]["id"])]
+    assert bob["1"]["solved"] and bob["1"]["minute"] == 260 and bob["1"]["penalty"] == 260
+    assert cat["1"]["solved"] and cat["1"]["tries"] == 1 and cat["1"]["penalty"] == 270 + 20
+    assert not cat["2"]["solved"] and cat["2"]["tries"] == 1
+    assert "1" not in d["reveal"].get(str(rows["Ann"]["id"]), {})

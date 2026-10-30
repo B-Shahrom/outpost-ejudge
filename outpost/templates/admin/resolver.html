@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Resolver · {{ contest.name }}{% endblock %}
+{% block bodyclass %}projector resolver-page{% endblock %}
+{% block content %}
+{% if problem %}
+<div class="panel"><h1>{{ contest.name }}</h1><p>{{ problem }}</p><p><a href="/admin/contests/{{ contest.code }}">Back</a></p></div>
+{% else %}
+<div class="row" style="margin-bottom:10px">
+  <h1 style="font-size:32px">{{ contest.name }}</h1><span class="spacer"></span>
+  <span id="resolver-status" class="pill warn">frozen standings</span>
+</div>
+<div id="resolver" data-src="/admin/contests/{{ contest.code }}/resolver.json" class="panel table-wrap"><p class="muted">Loading…</p></div>
+<p class="small muted resolver-help">Space or click: next step · A: play automatically · each reveal highlights the cell first, then shows it</p>
+{% endif %}
+{% endblock %}
+{% block scripts %}<script src="/static/resolver.js" defer></script>{% endblock %}
