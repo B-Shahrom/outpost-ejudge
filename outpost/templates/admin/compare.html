@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Compare #{{ rows[0].id }} and #{{ rows[1].id }}{% endblock %}
+{% block content %}
+<div class="row"><h1>#{{ rows[0].id }} {{ rows[0].username }} · #{{ rows[1].id }} {{ rows[1].username }}</h1><span class="spacer"></span>
+  <a class="btn" href="/admin/submissions/{{ rows[0].id }}">#{{ rows[0].id }}</a> <a class="btn" href="/admin/submissions/{{ rows[1].id }}">#{{ rows[1].id }}</a></div>
+<div class="panel table-wrap compare">{{ table|safe }}</div>
+{% endblock %}

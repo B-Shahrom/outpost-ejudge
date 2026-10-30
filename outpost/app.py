@@ -736,6 +736,65 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
         u = need_admin(request, c)
         return scoring.resolver_data(c, contest_by_code(c, code, u))
 
+    @app.get("/admin/contests/{code}/analysis", response_class=HTMLResponse)
+    def admin_analysis(request: Request, code: str, threshold: float = 0.6, accepted: int = 1):
+        """After the contest: similar solutions, and which tests catch people."""
+        from .similarity import clusters, compare
+        c = conn(request)
+        u = need_admin(request, c)
+        contest = contest_by_code(c, code, u)
+        problems = contest_problems(c, contest, u)
+        subs = db.all_(c, """SELECT s.id, s.user_id, s.problem_id, s.language, s.source, s.verdict,
+                                     s.test_results_json, u.username
+                              FROM submissions s JOIN users u ON u.id=s.user_id
+                              WHERE s.contest_id=? AND s.status='done' AND u.is_admin=0
+                              ORDER BY s.id""", (contest["id"],))
+        similar, heat = [], []
+        for p in problems:
+            mine = [s for s in subs if s["problem_id"] == p["id"]]
+            latest: dict[int, sqlite3.Row] = {}  # each contestant's latest (accepted) solution
+            for s in mine:
+                if s["verdict"] == "accepted" or (not accepted and s["verdict"] != "compilation_error"):
+                    latest[s["user_id"]] = s
+            by_id = {s["id"]: s for s in latest.values()}
+            pairs = compare({sid: s["source"] for sid, s in by_id.items()},
+                            {sid: s["language"] for sid, s in by_id.items()}, threshold)
+            for group in clusters(pairs):
+                similar.append({"label": p["label"], "best": group["best"],
+                                "members": [by_id[m] for m in group["members"]],
+                                "pairs": [(by_id[x.a], by_id[x.b], x.score) for x in group["pairs"][:6]],
+                                "more": max(0, len(group["pairs"]) - 6)})
+            tests = db.loads(p["tests_json"], [])
+            failed: dict[int, dict[str, set]] = {t["index"]: {} for t in tests}
+            tried = set()
+            for s in mine:
+                tried.add(s["user_id"])
+                for t in db.loads(s["test_results_json"], []) or []:
+                    if t["verdict"] not in ("accepted", "skipped") and t["test"] in failed:
+                        failed[t["test"]].setdefault(t["verdict"], set()).add(s["user_id"])
+            cells = [{"test": i, "users": len(set().union(*v.values())) if v else 0,
+                      "by": {k: len(x) for k, x in v.items()},
+                      "sample": next((t.get("sample") for t in tests if t["index"] == i), False)}
+                     for i, v in sorted(failed.items())]
+            heat.append({"p": p, "tried": len(tried), "cells": cells,
+                         "worst": max((x["users"] for x in cells), default=0)})
+        return render(request, "admin/analysis.html", c, contest=contest, admin_page=True,
+                      similar=similar, heat=heat, threshold=threshold, accepted=accepted)
+
+    @app.get("/admin/compare/{a}/{b}", response_class=HTMLResponse)
+    def admin_compare(request: Request, a: int, b: int):
+        import difflib
+        c = conn(request)
+        need_admin(request, c)
+        rows = [db.one(c, """SELECT s.*, u.username FROM submissions s JOIN users u ON u.id=s.user_id
+                                WHERE s.id=?""", (i,)) for i in (a, b)]
+        if None in rows:
+            raise HTTPException(404)
+        table = difflib.HtmlDiff(tabsize=4, wrapcolumn=70).make_table(
+            rows[0]["source"].splitlines(), rows[1]["source"].splitlines(),
+            f"#{a} {rows[0]['username']}", f"#{b} {rows[1]['username']}")
+        return render(request, "admin/compare.html", c, rows=rows, table=table)
+
     @app.get("/admin/contests/{code}/standings.csv")
     def admin_standings_csv(request: Request, code: str):
         c = conn(request)

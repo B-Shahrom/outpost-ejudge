@@ -146,8 +146,15 @@ Later:
 - [ ] **electicode bridge**: import a group's students as users, and push final
   results or a contest's problems back and forth (via Platform-Scraper's admin
   API knowledge).
-- [ ] Post-contest **plagiarism check** (token-based similarity) and a per-test
-  failure heat map.
+- [x] Post-contest **similarity check** and **failure heat map** (done): the
+  admin contest page → *Analysis*. Solutions are compared as normalised
+  tokens (identifiers, literals, comments, layout and `#include` lines don't
+  count), winnowed fingerprints like MOSS, and only within one language.
+  Fingerprints in more than half of a problem's *distinct* solutions count
+  as boilerplate. A copied solution counts once there, so mass copying
+  doesn't hide itself. Linked solutions are grouped (n identical solutions
+  are one row, not n²/2 pairs), with side-by-side comparisons. The heat map
+  shows, per test, how many contestants failed it and with which verdicts.
 - [ ] Balloons and print requests for in-person ICPC-style events.
 - [ ] Teams (several logins, one standings row).
 - [ ] A built-in code editor (CodeMirror, vendored) instead of the textarea.

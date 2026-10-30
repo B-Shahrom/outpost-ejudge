@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Analysis · {{ contest.name }}{% endblock %}
+{% block content %}
+<div class="row"><h1>Analysis — {{ contest.name }}</h1><span class="spacer"></span><a class="btn" href="/admin/contests/{{ contest.code }}">Back to contest</a></div>
+
+<h2>Similar solutions</h2>
+<form class="row small" method="get" style="margin-bottom:8px">
+  <label class="inline">Threshold <input type="number" name="threshold" value="{{ threshold }}" step="0.05" min="0.3" max="1" style="width:80px"></label>
+  <label class="inline"><input type="checkbox" name="accepted" value="1" {{ 'checked' if accepted }}> accepted solutions only</label>
+  <button type="submit">Update</button>
+</form>
+<div class="panel table-wrap">
+  <p class="small muted" style="margin-top:0">Each contestant's latest {{ 'accepted ' if accepted }}solution per problem, compared after renaming, reformatting and comment changes are undone. Code most of the room shares (a template) is ignored. A high score is a reason to look, not a verdict: short problems have few ways to be solved.</p>
+  {% if similar %}
+  <table>
+    <tr><th>Problem</th><th class="num">Up to</th><th>Who (linked by similar solutions)</th><th>Compare</th></tr>
+    {% for s in similar %}
+    <tr><td><b>{{ s.label }}</b></td>
+      <td class="num"><span class="pill {{ 'bad' if s.best >= 0.9 else 'warn' }}">{{ (s.best * 100)|round|int }}%</span></td>
+      <td><span class="small muted">{{ s.members|length }}:</span> <span class="mono small">{{ s.members|map(attribute='username')|join(', ') }}</span></td>
+      <td class="small">{% for a, b, score in s.pairs %}<a href="/admin/compare/{{ a.id }}/{{ b.id }}">{{ a.username }}–{{ b.username }} {{ (score * 100)|round|int }}%</a>{% if not loop.last %} · {% endif %}{% endfor %}{% if s.more %} · and {{ s.more }} more{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="muted">No pair at or above {{ (threshold * 100)|round|int }}%.</p>{% endif %}
+</div>
+
+<h2>Where people fail</h2>
+<div class="panel table-wrap">
+  <p class="small muted" style="margin-top:0">Contestants failing each test (any of their runs). A test that catches everyone may be wrong, a sample that catches many may be unclear.</p>
+  {% for h in heat %}
+  <div style="margin:10px 0">
+    <b>{{ h.p.label }}. {{ h.p.name }}</b> <span class="small muted">· {{ h.tried }} tried</span>
+    <div class="heat">
+      {% for c in h.cells %}
+        {% set share = (c.users / h.tried) if h.tried else 0 %}
+        <span class="heat-cell{{ ' sample' if c.sample }}" style="--share: {{ share }}" title="test {{ c.test }}{{ ' (sample)' if c.sample }}: {{ c.users }} of {{ h.tried }} contestant(s) failed{% for v, n in c.by.items() %} · {{ n }} {{ v|verdict|lower }}{% endfor %}">{{ c.test }}</span>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

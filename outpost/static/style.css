@@ -137,3 +137,17 @@ body.resolver-page table.board tr.resolving td { background-color: var(--info-bg
 body.resolver-page table.board tr.resolving td.cell-pending { background-color: var(--warn-bg); }
 body.resolver-page #resolver { cursor: pointer; }
 @media print { .resolver-help { display: none; } }
+
+/* analysis: failure heat map and side-by-side compare */
+.heat { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
+.heat-cell { min-width: 30px; padding: 4px 6px; text-align: center; font-size: 12px; border-radius: 4px;
+  font-variant-numeric: tabular-nums; border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bad) calc(var(--share) * 85%), var(--panel)); }
+.heat-cell.sample { border-style: dashed; }
+.compare table.diff { font-family: var(--mono); font-size: 12.5px; border-collapse: collapse; width: 100%; }
+.compare table.diff td { padding: 1px 6px; border: 0; white-space: pre-wrap; vertical-align: top; }
+.compare .diff_header { color: var(--muted); text-align: right; }
+.compare .diff_next { display: none; }
+.compare .diff_add { background: var(--ok-bg); }
+.compare .diff_chg { background: var(--warn-bg); }
+.compare .diff_sub { background: var(--bad-bg); }

@@ -275,3 +275,24 @@ def test_resolver_page_rules(app):
     assert ann.get("/admin/contests/icpc1/resolver.json").status_code == 403
     data = admin.get("/admin/contests/icpc1/resolver.json").json()
     assert {"problems", "rows", "reveal", "penalty_minutes"} <= set(data)
+
+
+def test_analysis_page(app, settings, problems):
+    admin = client(app, "jury", "jurypass")
+    make_contest(admin, "anal", "ioi")
+    add_problem(admin, "anal", problems["a-plus-b"])
+    make_users(admin, "cop1, Copy One, , pw-c1\ncop2, Copy Two, , pw-c2")
+    c = db.connect(settings.db_path)
+    cid = db.one(c, "SELECT id FROM contests WHERE code='anal'")["id"]
+    renamed = AB.replace("a,b", "x,y").replace(">>a>>b", ">>x>>y").replace("<<a+b", "<<x+y") + " // mine"
+    for user, src in (("cop1", AB + "\n// pad pad pad\nstruct Z{int a,b,c;}; Z z;"),
+                      ("cop2", renamed + "\nstruct Z{int a,b,c;}; Z z;")):
+        uid = db.one(c, "SELECT id FROM users WHERE username=?", (user,))["id"]
+        c.execute("INSERT INTO submissions (contest_id, problem_id, user_id, language, source, submitted_at) "
+                  "VALUES (?,?,?,?,?,?)", (cid, problems["a-plus-b"], uid, "cpp", src, time.time()))
+    worker.drain(settings)
+    page = admin.get("/admin/contests/anal/analysis?threshold=0.5").text
+    assert "cop1" in page and "cop2" in page and "/admin/compare/" in page
+    assert 'class="heat-cell' in page
+    link = page.split('href="/admin/compare/')[1].split('"')[0]
+    assert "diff" in admin.get(f"/admin/compare/{link}").text
