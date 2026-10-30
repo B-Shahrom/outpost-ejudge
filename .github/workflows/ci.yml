@@ -33,6 +33,10 @@ jobs:
         run: ./start.sh | tee start.log
       - name: Self-test passed inside the container
         run: grep -q '^Ready\.$' start.log
+      - name: Contestant address is the machine's, not a Docker bridge
+        run: |
+          grep 'Contestants:' start.log
+          ! grep -E 'Contestants: http://172\.(1[7-9]|2[0-9]|3[01])\.' start.log
       - name: Serves contestants on the published port
         run: |
           for i in $(seq 30); do curl -sf http://localhost:8000/healthz && break; sleep 1; done

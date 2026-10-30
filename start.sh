@@ -12,7 +12,13 @@ ip=""
 if [[ "$(uname)" == "Darwin" ]]; then
   for dev in en0 en1 bridge100; do ip=$(ipconfig getifaddr "$dev" 2>/dev/null || true); [[ -n "$ip" ]] && break; done
 else
-  ip=$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -E '^(192\.168|10\.|172\.(1[6-9]|2[0-9]|3[01]))\.' | grep -v '^172\.17\.' | head -n1 || true)
+  # By interface, not by address range: Docker's own bridges (docker0, br-*)
+  # use private addresses too, and one must never end up on the login slips.
+  candidates=$( { ip -4 -o addr show scope global 2>/dev/null \
+                  | awk '$2 !~ /^(docker|br-|veth|virbr|lxc|cni|flannel|tailscale|zt)/ {split($4, a, "/"); print a[1]}'; } \
+                || hostname -I 2>/dev/null | tr ' ' '\n')
+  # A hotspot or home network (192.168.x) first, then anything else left.
+  ip=$(printf '%s\n' "$candidates" | grep -m1 '^192\.168\.' || printf '%s\n' "$candidates" | grep -m1 . || true)
 fi
 export OUTPOST_PUBLIC_URL="${OUTPOST_PUBLIC_URL:-${ip:+http://$ip:8000/}}"
 
