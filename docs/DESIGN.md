@@ -85,8 +85,14 @@ after the last submission.
 ## Roadmap
 
 Next:
-- [ ] **isolate / nsjail sandbox backend** (mount namespace, cgroup memory
-  accounting) as an option next to the built-in one.
+- [x] **Filesystem jail** (done 2026-10-30), built into the sandbox instead of
+  depending on isolate/nsjail. It is one less thing to install, and it works
+  in the Docker image with only `CAP_SYS_ADMIN`. Each run gets a private mount
+  namespace: a 16 MB tmpfs root with `/usr`, `/lib*`, `/etc` and `/opt` bound
+  read-only, the existing `/proc` bound (Docker refuses a fresh procfs), five
+  device files and its own box writable, then `chroot`. It costs nothing
+  measurable in the load test.
+- [ ] PID namespace and cgroup memory accounting (the rest of what isolate does).
 - [ ] **mDNS**: announce `outpost.local` so nobody has to type an IP.
 - [ ] **Polygon API pull**: download packages straight from Polygon during prep
   (needs the internet only then). It can reuse Platform-Scraper's Polygon

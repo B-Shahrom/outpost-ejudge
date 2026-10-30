@@ -38,7 +38,8 @@ def cmd_serve(args, settings) -> int:
     pool = WorkerPool(settings, workers)
     pool.start()
     print(f"Outpost {__version__} — {workers} judge worker(s), "
-          f"network isolation {'on' if pool.isolated else 'OFF'}")
+          f"network isolation {'on' if pool.isolated else 'OFF'}, "
+          f"filesystem jail {'on' if pool.jailed else 'OFF'}")
     if settings.public_url:
         print(f"  contestants: {settings.public_url}")
     elif config.in_container():

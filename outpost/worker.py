@@ -22,7 +22,7 @@ import traceback
 from . import db, languages
 from .config import Settings
 from .judge import JUDGE_ERROR, Judge, ProblemSpec
-from .sandbox import Sandbox, network_isolation_available
+from .sandbox import Sandbox, jail_available, network_isolation_available
 
 POLL_SECONDS = 0.25
 
@@ -77,10 +77,16 @@ def judge_submission(conn: sqlite3.Connection, judge: Judge, settings: Settings,
                      (JUDGE_ERROR, traceback.format_exc()[-4000:], db.now(), sub_id))
 
 
-def make_judge(settings: Settings, n: int, isolate: bool) -> Judge:
+def make_judge(settings: Settings, n: int, isolate: bool, jail: bool = False) -> Judge:
     work = settings.boxes_dir / f"worker-{n}"
-    return Judge(Sandbox(work / "box", uid=settings.sandbox_uid_base + n, isolate_network=isolate),
-                 work / "io", pch_dir=settings.pch_dir)
+    sandbox = Sandbox(work / "box", uid=settings.sandbox_uid_base + n, isolate_network=isolate,
+                      jail=jail, readonly=[settings.pch_dir])
+    return Judge(sandbox, work / "io", pch_dir=settings.pch_dir)
+
+
+def protections(settings: Settings) -> tuple[bool, bool]:
+    """(network isolation, filesystem jail) — what this machine allows, probed once."""
+    return network_isolation_available(), jail_available(settings.boxes_dir)
 
 
 def _die_with_parent(parent: int) -> None:
@@ -114,14 +120,15 @@ def lock_box(settings: Settings, n: int):
     return handle
 
 
-def run_worker(settings: Settings, n: int, isolate: bool, stop=None, parent: int | None = None) -> None:
+def run_worker(settings: Settings, n: int, isolate: bool, jail: bool, stop=None,
+               parent: int | None = None) -> None:
     signal.signal(signal.SIGINT, signal.SIG_IGN)  # the parent decides when we stop
     signal.signal(signal.SIGTERM, lambda *_: os._exit(0))
     if parent is not None:
         _die_with_parent(parent)
     box_lock = lock_box(settings, n)  # noqa: F841 - held until exit
     conn = db.connect(settings.db_path)
-    judge = make_judge(settings, n, isolate)
+    judge = make_judge(settings, n, isolate, jail)
     while stop is None or not stop.is_set():
         if parent is not None and os.getppid() != parent:
             break
@@ -137,7 +144,7 @@ def drain(settings: Settings, n: int = 0) -> int:
     languages.prepare_pch(settings.pch_dir, log=lambda _: None)
     box_lock = lock_box(settings, n)  # noqa: F841 - held until we return
     conn = db.connect(settings.db_path)
-    judge = make_judge(settings, n, network_isolation_available())
+    judge = make_judge(settings, n, *protections(settings))
     count = 0
     while (sub_id := claim(conn)) is not None:
         judge_submission(conn, judge, settings, sub_id)
@@ -151,9 +158,10 @@ class WorkerPool:
         self.settings, self.count = settings, count
         ctx = mp.get_context("spawn")
         self.stop = ctx.Event()
-        isolate = network_isolation_available()
-        self.isolated = isolate
-        self.procs = [ctx.Process(target=run_worker, args=(settings, n, isolate, self.stop, os.getpid()),
+        settings.ensure_dirs()
+        self.isolated, self.jailed = protections(settings)
+        self.procs = [ctx.Process(target=run_worker,
+                                  args=(settings, n, self.isolated, self.jailed, self.stop, os.getpid()),
                                   name=f"outpost-judge-{n}", daemon=True)
                       for n in range(count)]
 

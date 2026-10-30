@@ -33,7 +33,7 @@ from typing import Callable
 from . import db, languages, latex
 from .config import Settings
 from .judge import ACCEPTED, Judge, ProblemSpec
-from .sandbox import Sandbox, network_isolation_available
+from .sandbox import Sandbox, jail_available, network_isolation_available
 
 Log = Callable[[str], None]
 
@@ -349,7 +349,8 @@ def _run_main(info: dict, spec: ProblemSpec, missing_ans: list[int], settings: S
     lang = languages.get(lang_id)
     work = settings.boxes_dir / f"import-{os.getpid()}"
     sandbox = Sandbox(work / "box", uid=settings.sandbox_uid_base + 999,
-                      isolate_network=network_isolation_available())
+                      isolate_network=network_isolation_available(),
+                      jail=jail_available(settings.boxes_dir), readonly=[settings.pch_dir])
     judge = Judge(sandbox, work / "io", pch_dir=settings.pch_dir)
     try:
         ok, out, run = judge.compile(lang, src.read_text(encoding="utf-8", errors="replace"))

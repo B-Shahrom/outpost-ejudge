@@ -10,8 +10,8 @@
     <div class="card"><div class="muted small">Problems</div><div class="n"><a href="/admin/problems">{{ problems }}</a></div></div>
     <div class="card"><div class="muted small">Contestants</div><div class="n"><a href="/admin/users">{{ users }}</a></div></div>
   </div>
-  {% if isolated is false %}
-  <div class="flash" style="margin-top:16px">Network isolation is <b>off</b>: this machine can't give runs their own network namespace. Run as root on Linux, or use the Docker setup, before a real contest.</div>
+  {% if isolated is false or jailed is false %}
+  <div class="flash" style="margin-top:16px">{% if isolated is false %}Network isolation is <b>off</b>{% endif %}{% if isolated is false and jailed is false %} and the {% elif jailed is false %}The {% endif %}{% if jailed is false %}filesystem jail is <b>off</b>{% endif %}: this machine doesn't allow the namespaces they need. Run as root on Linux, or use the Docker setup, before a real contest.</div>
   {% endif %}
   <div class="panel" style="margin-top:16px">
     <h3 style="margin-top:0">Contests</h3>

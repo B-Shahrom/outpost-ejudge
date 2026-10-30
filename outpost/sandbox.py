@@ -8,18 +8,23 @@ binaries. Each run
   a container with ``CAP_SYS_ADMIN``;
 * drops to a dedicated unprivileged uid, so it cannot read the data directory
   (tests, answers, database) or touch another run's files and processes;
+* sees a filesystem of its own (a *jail*, when mount namespaces are allowed):
+  the system's programs and libraries read-only, its box, a small /tmp — and
+  nothing else, so the data directory, other boxes, /home and /root don't
+  exist for it;
 * is held to CPU-time, address-space, stack, file-size, process-count and
   open-file limits via ``setrlimit``, plus a wall-clock limit enforced here.
 
 Time is CPU time (user + system), memory is peak RSS — both from ``wait4``.
 
-It is not a full jail: the filesystem stays visible (read-only to that uid
-where permissions say so). For a hostile room, run the judge in the provided
-container (``docker compose``), which also has no network interface at all.
+Without root (or CAP_SYS_ADMIN in a container) the namespaces are skipped and
+the filesystem stays visible, read-only where permissions say so;
+``outpost selftest`` reports which protections are on.
 """
 
 from __future__ import annotations
 
+import ctypes
 import os
 import resource
 import signal
@@ -30,6 +35,59 @@ from pathlib import Path
 from typing import IO
 
 MB = 1024 * 1024
+
+# What a jailed run can see besides its box: the system's programs, libraries
+# and configuration, read-only. Missing ones are skipped; symlinks (merged /usr)
+# are recreated as symlinks.
+SYSTEM_PATHS = ("/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32", "/etc", "/opt")
+DEVICES = ("null", "zero", "full", "random", "urandom")
+JAIL_TMPFS = "size=16m,mode=755"  # the jail's root, /tmp included: small on purpose
+
+_MS_RDONLY, _MS_NOSUID, _MS_NODEV = 1, 2, 4
+_MS_REMOUNT, _MS_BIND, _MS_REC, _MS_PRIVATE = 32, 4096, 16384, 1 << 18
+_libc = ctypes.CDLL(None, use_errno=True)
+
+
+def _mount(src: str | None, target: str, fstype: str | None, flags: int, data: str | None = None) -> None:
+    enc = (lambda s: s.encode() if s is not None else None)
+    if _libc.mount(enc(src), enc(target), enc(fstype), flags, enc(data)) != 0:
+        err = ctypes.get_errno()
+        raise OSError(err, os.strerror(err), target)
+
+
+def _bind(src: str, target: str, writable: bool = False) -> None:
+    _mount(src, target, None, _MS_BIND | _MS_REC)
+    if not writable:  # a bind mount only becomes read-only on a remount
+        _mount(None, target, None, _MS_REMOUNT | _MS_BIND | _MS_RDONLY | _MS_NOSUID | _MS_REC)
+
+
+def _enter_jail(root: str, writable: list[str], readonly: list[str]) -> None:
+    """In the child: build the jail under ``root`` and chroot into it."""
+    # The judge runs with umask 077 (to keep its data private); the paths we
+    # create in here must stay walkable for the run's uid.
+    os.umask(0o022)
+    _mount(None, "/", None, _MS_REC | _MS_PRIVATE)  # nothing we mount leaks to the host
+    _mount("tmpfs", root, "tmpfs", _MS_NOSUID | _MS_NODEV, JAIL_TMPFS)
+    for path in SYSTEM_PATHS:
+        if os.path.islink(path):
+            os.symlink(os.readlink(path), root + path)
+        elif os.path.isdir(path):
+            os.makedirs(root + path, exist_ok=True)
+            _bind(path, root + path)
+    for path in readonly + writable:
+        if os.path.exists(path):
+            os.makedirs(root + path, exist_ok=True)
+            _bind(path, root + path, writable=path in writable)
+    os.makedirs(root + "/dev", exist_ok=True)
+    for dev in DEVICES:
+        open(f"{root}/dev/{dev}", "w").close()
+        _mount(f"/dev/{dev}", f"{root}/dev/{dev}", None, _MS_BIND)
+    os.makedirs(root + "/proc", exist_ok=True)
+    # A fresh procfs is refused inside Docker; the existing one, bound, is not.
+    _mount("/proc", root + "/proc", None, _MS_BIND | _MS_REC)
+    os.makedirs(root + "/tmp", exist_ok=True)
+    os.chmod(root + "/tmp", 0o1777)
+    os.chroot(root)
 
 # Messages a runtime prints when an allocation fails under the address-space
 # limit. The process often dies with little resident memory, so peak RSS alone
@@ -78,6 +136,24 @@ class Running:
     killed_for_wall: bool = False
 
 
+def jail_available(scratch: Path) -> bool:
+    """Probe once whether runs can get their own filesystem view."""
+    if not hasattr(os, "unshare") or os.geteuid() != 0:
+        return False
+    root = scratch / "jail-probe"
+    root.mkdir(parents=True, exist_ok=True)
+    pid = os.fork()
+    if pid == 0:  # pragma: no cover - child
+        try:
+            os.unshare(os.CLONE_NEWNS)
+            _enter_jail(str(root), [], [])
+            os._exit(0 if not os.path.exists(str(scratch)) else 1)  # the host is hidden
+        except BaseException:
+            os._exit(1)
+    _, status = os.waitpid(pid, 0)
+    return os.waitstatus_to_exitcode(status) == 0
+
+
 def network_isolation_available() -> bool:
     """Probe once whether a child can be given its own network namespace."""
     if not hasattr(os, "unshare"):
@@ -99,11 +175,15 @@ def network_isolation_available() -> bool:
 class Sandbox:
     """Spawns runs inside one box directory as one uid."""
 
-    def __init__(self, box: Path, uid: int | None = None, isolate_network: bool = True):
+    def __init__(self, box: Path, uid: int | None = None, isolate_network: bool = True,
+                 jail: bool = False, readonly: list[Path] | None = None):
         self.box = box
         # Dropping privileges is only possible (and only needed) as root.
         self.uid = uid if (uid is not None and os.geteuid() == 0) else None
         self.isolate_network = isolate_network
+        self.jail = jail and os.geteuid() == 0
+        self.readonly = [str(p) for p in (readonly or [])]  # extra paths a jailed run may read
+        self.jail_root = box.parent / "jail"
 
     # -- box management -------------------------------------------------
     def prepare(self) -> Path:
@@ -141,6 +221,11 @@ class Sandbox:
         """Start ``argv``. ``trusted`` runs (checkers, interactors) keep our uid."""
         uid = None if trusted else self.uid
         isolate = self.isolate_network and not trusted
+        jail = self.jail and not trusted
+        if jail:
+            self.jail_root.mkdir(exist_ok=True)
+        jail_root, writable = str(self.jail_root), [str(cwd or self.box)]
+        readonly = self.readonly
         stderr = open(stderr_path, "wb") if stderr_path else subprocess.DEVNULL
         if stderr_path and uid is not None:
             os.chown(stderr_path, uid, uid)
@@ -151,6 +236,12 @@ class Sandbox:
                     os.unshare(os.CLONE_NEWNET)
                 except OSError:
                     pass
+            if jail:
+                # No fallback here: jail_available() said it works, so a failure
+                # is a real fault and the run must not go ahead unjailed.
+                os.unshare(os.CLONE_NEWNS)
+                _enter_jail(jail_root, writable, readonly)
+                os.chdir(writable[0])
             cpu = max(1, -(-limits.time_ms // 1000)) + 1
             resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu + 1))
             if limits.memory_mb and limits.address_space:

@@ -109,20 +109,26 @@ Standings rules (penalty, ties, freeze) are documented at the top of
 
 ## Security model, honestly
 
-Outpost's sandbox ([`outpost/sandbox.py`](outpost/sandbox.py)) uses plain POSIX
-process control. Every run:
+Outpost's sandbox ([`outpost/sandbox.py`](outpost/sandbox.py)) is built in. It
+needs no extra install. Every run, compiles included:
 
-- gets its own uid,
-- has no network (an empty network namespace),
-- has rlimits on CPU, address space, stack, file size, process count and open
-  files,
-- has its whole process group killed when it ends.
+- **gets its own uid**, so it can't touch other runs or the judge's files;
+- **has no network**: an empty network namespace;
+- **gets its own filesystem view** (a jail: a private mount namespace and
+  `chroot`). It sees only the system's programs and libraries (read-only), its
+  own box and a 16 MB `/tmp`. The data directory with the tests, answers and
+  database, other runs' boxes, `/home` and `/root` don't exist for it;
+- **has limits** on CPU, address space, stack, file size, process count and
+  open files;
+- **ends with its whole process group killed.**
 
-The data directory is private to root, so a submission can't read the answers;
-the tests check this. The filesystem stays visible read-only (no chroot or mount
-namespace yet), so a submission can read world-readable system files. On a
-contest laptop that is acceptable. A full jail (isolate/nsjail backend) is on the
-roadmap.
+The namespaces need root, or `CAP_SYS_ADMIN` in a container (the provided
+`docker-compose.yml` grants it). Without them the runs still get their own uid
+and limits. `outpost selftest` checks every one of these protections, and the
+dashboard warns if one is off.
+
+Not done yet: there is no PID namespace, so a run can list other processes,
+though not touch them. Memory is measured as peak RSS, not with cgroups.
 
 ## Development
 

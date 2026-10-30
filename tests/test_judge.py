@@ -172,3 +172,38 @@ def test_precompiled_header_built_by_two_processes_at_once(tmp_path):
     assert results == [str(tmp_path / "pch")] * 2
     assert (tmp_path / "pch" / "bits" / "stdc++.h.gch").exists()
     assert not list((tmp_path / "pch" / "bits").glob("*.tmp"))
+
+
+@pytest.mark.skipif(os.geteuid() != 0, reason="the filesystem jail needs root")
+def test_filesystem_jail(settings, tmp_path):
+    from outpost.sandbox import jail_available
+    if not jail_available(settings.boxes_dir):
+        pytest.skip("no mount namespaces here")
+    sb = worker.make_judge(settings, 8, False, True).sb
+    sb.prepare()
+    probe = sb.box / "probe.py"
+    probe.write_text(
+        "import os\n"
+        # The box lives under the data dir, so that path exists as a bare
+        # skeleton; what it holds (problems, the database) must not.
+        f"print('problems', os.path.exists({str(settings.problems_dir)!r}))\n"
+        f"print('db', os.path.exists({str(settings.db_path)!r}))\n"
+        f"print('listing', sorted(os.listdir({str(settings.data_dir)!r})))\n"
+        "print('home', os.path.exists('/home'), 'root', os.path.exists('/root'))\n"
+        "open('/tmp/scratch', 'w').write('x'); print('tmp ok')\n"
+        "open('here.txt', 'w').write('x'); print('box ok')\n"
+        "try:\n open('/usr/evil', 'w'); print('usr WRITABLE')\nexcept OSError: print('usr ro')\n"
+        "try:\n open('/etc/evil', 'w'); print('etc WRITABLE')\nexcept OSError: print('etc ro')\n")
+    sb.give(probe)
+    out = tmp_path / "out"
+    with open(out, "wb") as f:
+        res = sb.run(["python3", "probe.py"], Limits(time_ms=5000, memory_mb=None), stdout=f)
+    text = out.read_text()
+    assert res.ok, text
+    assert "problems False" in text and "db False" in text, text
+    assert "listing ['boxes', 'pch']" in text or "listing ['boxes']" in text, text
+    assert "home False root False" in text
+    assert "tmp ok" in text and "box ok" in text and "usr ro" in text and "etc ro" in text
+    assert (sb.box / "here.txt").exists()          # the box is the real one
+    assert not any(str(sb.jail_root) in line for line in open("/proc/self/mounts"))  # nothing leaked
+    sb.clean()

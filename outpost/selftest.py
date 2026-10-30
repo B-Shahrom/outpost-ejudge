@@ -16,8 +16,7 @@ from pathlib import Path
 
 from . import config, languages
 from .judge import ProblemSpec
-from .sandbox import network_isolation_available
-from .worker import make_judge
+from .worker import make_judge, protections
 
 CPP_AB = "#include <bits/stdc++.h>\nint main(){long long a,b;std::cin>>a>>b;std::cout<<a+b;}"
 CASES = [
@@ -58,10 +57,11 @@ def run(out=print) -> int:
         (pdir / "tests" / "01.a").write_text("3\n")
         spec = ProblemSpec(dir=pdir, time_limit_ms=1000, memory_limit_mb=256,
                            tests=[{"index": 1, "group": "", "points": 0, "sample": True}])
-        isolated = network_isolation_available()
+        isolated, jailed = protections(settings)
         pch = languages.prepare_pch(real.pch_dir, log=lambda line: out("  " + line))
-        judge = make_judge(settings, 98, isolated)
+        judge = make_judge(settings, 98, isolated, jailed)
         judge.pch_dir = pch
+        judge.sb.readonly = [str(pch)] if pch else []
 
         out("Judging known programs:")
         for name, lang, src, want in CASES:
@@ -87,6 +87,11 @@ def run(out=print) -> int:
                "isolated" if text == "blocked" else
                (f"probe said {text!r}" + ("" if isolated else
                 " (no network namespaces: run as root, or the container needs CAP_SYS_ADMIN)")))
+        look = judge.sb.run(["test", "-e", str(settings.problems_dir)], _limits())
+        report("submissions can't see the judge's files", look.exit_code != 0,
+               "hidden (filesystem jail)" if look.exit_code != 0 else
+               "visible" + ("" if jailed else " (no mount namespaces: run as root, or the container "
+                                              "needs CAP_SYS_ADMIN)"))
         if os.geteuid() == 0:
             secret = settings.problems_dir / "selftest" / "tests" / "01.a"
             reader = judge.sb.run(["cat", str(secret)], _limits(), stdout=open(os.devnull, "wb"))

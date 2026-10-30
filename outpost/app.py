@@ -365,6 +365,7 @@ def create_app(settings: Settings, pool=None) -> FastAPI:
                       saved_url=db.get_setting(c, "public_url"),
                       workers=pool.count if pool else 0,
                       isolated=pool.isolated if pool else None,
+                      jailed=pool.jailed if pool else None,
                       contests=db.all_(c, "SELECT * FROM contests ORDER BY start_at DESC"),
                       problems=db.one(c, "SELECT COUNT(*) AS n FROM problems")["n"],
                       users=db.one(c, "SELECT COUNT(*) AS n FROM users WHERE is_admin=0")["n"])
