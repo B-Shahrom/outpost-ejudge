@@ -6,6 +6,7 @@
 services:
   outpost:
     build: .
+    init: true          # a real PID 1 that reaps orphaned processes
     ports:
       - "8000:8000"
     # Each run gets its own empty network namespace (no network at all for

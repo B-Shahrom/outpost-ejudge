@@ -99,7 +99,27 @@ Next:
   read-only, the existing `/proc` bound (Docker refuses a fresh procfs), five
   device files and its own box writable, then `chroot`. It costs nothing
   measurable in the load test.
-- [ ] PID namespace and cgroup memory accounting (the rest of what isolate does).
+- [x] **Programs that multiply** (done; replaces "PID namespace and cgroup
+  memory"). Testing a fork bomb found that it survived its own judging: 63
+  processes kept forking at the run uid's cap, so the *next* submission on
+  that judge couldn't compile. In Docker, where Outpost is PID 1, orphans
+  also became zombies that nobody reaped. Now:
+  - after every run, a helper that becomes the run's uid kills all of its
+    processes at once (`kill(-1)`), until `/proc` shows none;
+  - judges are child subreapers, so orphans come back to them to be reaped;
+  - compose runs a real init;
+  - C++ and Python runs may have 8 processes (64 before), so a program that
+    forks can't multiply its memory limit much. Java keeps 256, because the
+    JVM needs threads.
+
+  `outpost selftest` checks it, inside the container in CI too.
+- *Not done, on purpose:*
+  - **PID namespace.** The run would be PID 1 there and ignore signals
+    that limit handling relies on. Per-run uids already stop it from
+    touching other processes, and hiding them needs a fresh /proc, which
+    Docker refuses.
+  - **cgroup memory.** The launcher already measures a program's own
+    memory, and cgroups need privileges Docker Desktop doesn't grant.
 - [x] **mDNS** (done): `serve` announces `outpost.local`. A second Outpost on
   the same network gets `outpost-2.local`. The IP stays the main address on
   the dashboard and slips because Android browsers don't reliably resolve

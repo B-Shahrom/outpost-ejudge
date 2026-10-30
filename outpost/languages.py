@@ -23,7 +23,10 @@ class Language:
     run: list[str]                       # argv; {mem} expands to the memory limit in MB
     address_space: bool = True           # cap virtual memory (the JVM can't take it)
     rss_slack_mb: int = 0
-    processes: int = 64
+    # RLIMIT_NPROC for the run's uid (the launcher counts as one). Small, because
+    # each process may use the whole memory limit: without cgroups this caps
+    # what a program that forks can take from the machine.
+    processes: int = 8
     time_factor: float = 1.0             # TL multiplier for this language
     extensions: tuple[str, ...] = field(default=())
 

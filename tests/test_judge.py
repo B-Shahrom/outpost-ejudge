@@ -253,3 +253,33 @@ def test_program_cannot_forge_the_launchers_report(settings, tmp_path):
     assert "wrote" not in out.read_text() and "proc fd" not in out.read_text(), out.read_text()
     assert res.time_ms > 100, res   # the real CPU time, not the forged 0 ms
     sb.clean()
+
+
+@pytest.mark.skipif(os.geteuid() != 0, reason="a separate uid needs root")
+def test_fork_bomb_leaves_nothing_behind(settings, problems, conn):
+    from outpost.sandbox import processes_of
+    row = db.one(conn, "SELECT * FROM problems WHERE slug='a-plus-b'")
+    spec = worker.spec_for(row, settings)
+    j = worker.make_judge(settings, 14, *worker.protections(settings))
+    bomb = "#include <unistd.h>\nint main(){ while(1) fork(); }"
+    out = j.judge(spec, "cpp", bomb, "icpc")
+    assert out.verdict in ("time_limit_exceeded", "runtime_error"), out.verdict
+    assert processes_of(j.sb.uid) == []
+    # It used to keep the uid at its process cap: the next run couldn't even compile.
+    assert j.judge(spec, "cpp", AB, "icpc").verdict == "accepted"
+
+
+@pytest.mark.skipif(os.geteuid() != 0, reason="a separate uid needs root")
+def test_a_program_cannot_multiply_its_memory(settings, problems, conn):
+    from outpost.sandbox import processes_of
+    row = db.one(conn, "SELECT * FROM problems WHERE slug='a-plus-b'")
+    spec = worker.spec_for(row, settings)
+    j = worker.make_judge(settings, 15, *worker.protections(settings))
+    forker = ("#include <bits/stdc++.h>\n#include <unistd.h>\n#include <sys/wait.h>\n"
+              "int main(){ int made = 0; for (int i = 0; i < 40; i++) { pid_t p = fork(); if (p == 0) { pause(); }"
+              " if (p > 0) made++; } long long a,b; std::cin>>a>>b; std::cout<<a+b; fprintf(stderr, \"made %d\", made); }")
+    out = j.judge(spec, "cpp", forker, "icpc")
+    assert out.verdict == "accepted"
+    made = int(open(j.io / "err.txt").read().split()[-1])
+    assert made <= 7, made          # the process cap held (8 with the launcher)
+    assert processes_of(j.sb.uid) == []

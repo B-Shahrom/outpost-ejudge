@@ -135,6 +135,7 @@ class Running:
     result: RunResult | None = None
     killed_for_wall: bool = False
     report_fd: int | None = None     # read end of the launcher's report pipe
+    uid: int | None = None           # the run's uid, when it has one of its own
 
 
 def build_launcher(runtime_dir: Path, log=lambda _: None) -> Path | None:
@@ -217,6 +218,7 @@ class Sandbox:
         self.readonly = [str(p) for p in (readonly or [])]  # extra paths a jailed run may read
         self.jail_root = box.parent / "jail"
         self.launcher = str(launcher) if launcher else None  # see launcher.c
+        _become_subreaper()
 
     # -- box management -------------------------------------------------
     def prepare(self) -> Path:
@@ -320,7 +322,7 @@ class Sandbox:
                 stderr.close()
         if report_w is not None:
             os.close(report_w)  # only the launcher holds the write end now
-        return Running(proc=proc, limits=limits, stderr_path=stderr_path, report_fd=report_r)
+        return Running(proc=proc, limits=limits, stderr_path=stderr_path, report_fd=report_r, uid=uid)
 
     def wait(self, *runs: Running) -> list[RunResult]:
         """Wait for every run, killing any that overstay their wall limit."""
@@ -332,6 +334,8 @@ class Sandbox:
                     r.proc.returncode = os.waitstatus_to_exitcode(status)
                     r.result = _classify(r, status, usage)
                     _kill_group(r.proc.pid)  # stray children of the run
+                    if r.uid is not None:
+                        kill_uid(r.uid)  # and anything that escaped the group (a fork bomb)
                     pending.remove(r)
                 elif time.monotonic() - r.started > r.limits.wall:
                     r.killed_for_wall = True
@@ -342,6 +346,63 @@ class Sandbox:
 
     def run(self, argv: list[str], limits: Limits, **kw) -> RunResult:
         return self.wait(self.spawn(argv, limits, **kw))[0]
+
+
+def _become_subreaper() -> None:
+    """Orphans of our runs come to us instead of to PID 1, so we can reap them.
+
+    In the Docker image PID 1 is Outpost itself and never reaps: zombies
+    would pile up and, since they count against the run uid's process cap,
+    eventually stop that judge from even compiling.
+    """
+    try:
+        _libc.prctl(36, 1, 0, 0, 0)  # PR_SET_CHILD_SUBREAPER
+    except (AttributeError, OSError):
+        pass
+
+
+def processes_of(uid: int) -> list[int]:
+    out = []
+    for entry in os.scandir("/proc"):
+        if entry.name.isdigit():
+            try:
+                if entry.stat().st_uid == uid:
+                    out.append(int(entry.name))
+            except OSError:
+                pass
+    return out
+
+
+def kill_uid(uid: int, rounds: int = 50) -> bool:
+    """Kill every process of a run's uid; True when none is left.
+
+    A process group isn't enough: a fork bomb makes new processes while the
+    group is being killed, and the survivors kept the uid at its process
+    cap, so the next submission on that judge couldn't even compile. A
+    helper that *becomes* the uid and calls kill(-1) signals all of them in
+    one call (the uid is this judge's alone). Repeated until /proc shows none.
+    """
+    for _ in range(rounds):
+        left = processes_of(uid)
+        for pid in left:  # dead ones are zombies until reaped: they still count against the cap
+            try:
+                os.waitpid(pid, os.WNOHANG)
+            except ChildProcessError:
+                pass
+        if not processes_of(uid):
+            return True
+        pid = os.fork()
+        if pid == 0:  # pragma: no cover - child
+            try:
+                os.setgroups([])
+                os.setgid(uid)
+                os.setuid(uid)
+                os.kill(-1, signal.SIGKILL)
+            except OSError:
+                pass
+            os._exit(0)
+        os.waitpid(pid, 0)
+    return not processes_of(uid)
 
 
 def _kill_group(pid: int) -> None:

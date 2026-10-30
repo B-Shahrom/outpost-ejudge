@@ -74,6 +74,13 @@ def run(out=print) -> int:
                    else f"expected {want}, got {got}")
 
         out("Sandbox:")
+        if os.geteuid() == 0:
+            from .sandbox import processes_of
+            bomb = judge.judge(spec, "cpp", "#include <unistd.h>\nint main(){ while(1) fork(); }", "icpc")
+            left = processes_of(judge.sb.uid)
+            after = judge.judge(spec, "cpp", CPP_AB, "icpc").verdict
+            report("a fork bomb leaves nothing behind", not left and after == "accepted",
+                   f"{bomb.verdict}, then the next run: {after}" if not left else f"{len(left)} process(es) left")
         judge.sb.prepare()
         probe = judge.sb.box / "probe.py"
         probe.write_text(NETWORK_PROBE)

@@ -145,15 +145,18 @@ needs no extra install. Every run, compiles included:
   database, other runs' boxes, `/home` and `/root` don't exist for it;
 - **has limits** on CPU, address space, stack, file size, process count and
   open files;
-- **ends with its whole process group killed.**
+- **leaves nothing running.** Every process of the run's uid is killed
+  afterwards, a fork bomb included, and C++/Python runs may have at most 8
+  processes, so one can't multiply its memory limit.
 
 The namespaces need root, or `CAP_SYS_ADMIN` in a container (the provided
 `docker-compose.yml` grants it). Without them the runs still get their own uid
 and limits. `outpost selftest` checks every one of these protections, and the
 dashboard warns if one is off.
 
-Not done yet: there is no PID namespace, so a run can list other processes,
-though not touch them. Memory is measured as peak RSS, not with cgroups.
+Not done, on purpose: there is no PID namespace, so a run can list other
+processes, though not touch them. Memory is the program's peak RSS, measured
+by a small launcher, not cgroups. `docs/DESIGN.md` explains both choices.
 
 ## Development
 
