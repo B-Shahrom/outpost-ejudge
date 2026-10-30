@@ -18,6 +18,7 @@ dependencies = [
   "segno>=1.6",
   "zeroconf>=0.130",
   "pypdf>=4",
+  "markdown>=3.5",
 ]
 
 [project.optional-dependencies]
@@ -30,7 +31,7 @@ outpost = "outpost.__main__:main"
 packages = ["outpost"]
 
 [tool.setuptools.package-data]
-outpost = ["launcher.c", "templates/*.html", "templates/admin/*.html", "static/*", "static/vendor/katex/*", "static/vendor/katex/fonts/*", "static/vendor/codemirror/*"]
+outpost = ["launcher.c", "testlib.h", "templates/*.html", "templates/admin/*.html", "static/*", "static/vendor/katex/*", "static/vendor/katex/fonts/*", "static/vendor/codemirror/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

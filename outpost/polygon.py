@@ -406,42 +406,65 @@ def _run_main(info: dict, spec: ProblemSpec, missing_ans: list[int], settings: S
 
 
 def import_package(zip_path: Path, settings: Settings, log: Log = print, verify: bool = True) -> int:
-    """Import ``zip_path`` and return the problem id."""
+    """Import ``zip_path`` (one Polygon package) and return the problem id."""
+    ids = import_path(zip_path, settings, log, verify)
+    return ids[0]
+
+
+def import_path(path: Path, settings: Settings, log: Log = print, verify: bool = True) -> list[int]:
+    """Import a Polygon package zip, or electicode problems backed up by
+    Platform-Scraper (one problem folder, a whole backup, or a zip of either).
+    Returns the problem ids."""
+    from . import electicode
     settings.ensure_dirs()
     staging = Path(tempfile.mkdtemp(prefix="import-", dir=settings.uploads_dir))
     try:
-        extracted = staging / "pkg"
-        extracted.mkdir()
-        safe_extract(zip_path, extracted)
-        root = find_root(extracted)
-        built_dir = staging / "built"
-        fields = build(root, built_dir, settings, log, verify=verify)
-        slug = fields["slug"]
-        final = settings.problems_dir / slug
-        if final.exists():
-            shutil.rmtree(final)
-        shutil.move(str(built_dir), final)
-        conn = db.connect(settings.db_path)
-        try:
-            row = db.one(conn, "SELECT id FROM problems WHERE slug=?", (slug,))
-            cols = list(fields)
-            if row:
-                sets = ", ".join(f"{c}=?" for c in cols if c != "slug")
-                conn.execute(f"UPDATE problems SET {sets}, status='ready', import_log=? WHERE id=?",
-                             [fields[c] for c in cols if c != "slug"] + [_log_text(log), row["id"]])
-                pid = row["id"]
-            else:
-                cur = conn.execute(
-                    f"INSERT INTO problems ({', '.join(cols)}, status, import_log, created_at) "
-                    f"VALUES ({', '.join('?' * len(cols))}, 'ready', ?, ?)",
-                    [fields[c] for c in cols] + [_log_text(log), db.now()])
-                pid = cur.lastrowid
-        finally:
-            conn.close()
-        log(f"imported {slug!r} (problem #{pid})")
-        return pid
+        if path.is_dir():
+            root = path
+        else:
+            root = staging / "pkg"
+            root.mkdir()
+            safe_extract(path, root)
+        found = electicode.find_problems(root)
+        if found:
+            ids = []
+            for n, folder in enumerate(found):
+                built = staging / f"built-{n}"
+                ids.append(_save(electicode.build(folder, built, log), built, settings, log))
+            return ids
+        pkg = find_root(root)
+        built = staging / "built"
+        return [_save(build(pkg, built, settings, log, verify=verify), built, settings, log)]
     finally:
         shutil.rmtree(staging, ignore_errors=True)
+
+
+def _save(fields: dict, built_dir: Path, settings: Settings, log: Log) -> int:
+    """Move a built problem into place and create or update its row."""
+    slug = fields["slug"]
+    final = settings.problems_dir / slug
+    if final.exists():
+        shutil.rmtree(final)
+    shutil.move(str(built_dir), final)
+    conn = db.connect(settings.db_path)
+    try:
+        row = db.one(conn, "SELECT id FROM problems WHERE slug=?", (slug,))
+        cols = list(fields)
+        if row:
+            sets = ", ".join(f"{c}=?" for c in cols if c != "slug")
+            conn.execute(f"UPDATE problems SET {sets}, status='ready', import_log=? WHERE id=?",
+                         [fields[c] for c in cols if c != "slug"] + [_log_text(log), row["id"]])
+            pid = row["id"]
+        else:
+            cur = conn.execute(
+                f"INSERT INTO problems ({', '.join(cols)}, status, import_log, created_at) "
+                f"VALUES ({', '.join('?' * len(cols))}, 'ready', ?, ?)",
+                [fields[c] for c in cols] + [_log_text(log), db.now()])
+            pid = cur.lastrowid
+    finally:
+        conn.close()
+    log(f"imported {slug!r} (problem #{pid})")
+    return pid
 
 
 def _log_text(log: Log) -> str:

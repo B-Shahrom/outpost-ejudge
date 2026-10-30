@@ -78,6 +78,19 @@ sudo outpost worker --server http://192.168.137.1:8000/ --token <token>
 If such a laptop dies or leaves mid-contest, its unfinished submissions go back
 to the queue after 10 minutes.
 
+### Problems from electicode
+
+Platform-Scraper's `course_backup.py --course <slug> --full-problems` saves a
+course's problems with their tests. Outpost imports that straight away: one
+problem folder, the whole `problems/` folder, or a zip of either:
+
+```bash
+outpost import backups/intro-cpp/problems
+```
+
+Problems judged on electicode with a custom checker need the `source.json`
+that newer backups save; older backups of them are refused with a message.
+
 ### Before every contest
 
 `outpost selftest` (or `docker compose exec outpost outpost selftest`) judges

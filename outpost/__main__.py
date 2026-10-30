@@ -122,19 +122,19 @@ def cmd_admin(args, settings) -> int:
 
 
 def cmd_import(args, settings) -> int:
-    from .polygon import ImportError_, Recorder, import_package
+    from .polygon import ImportError_, Recorder, import_path
 
     settings.ensure_dirs()
     db.init(settings.db_path)
     path = Path(args.package)
     try:
-        import_package(path, settings, log=Recorder(echo=lambda s: print(s, flush=True)),
-                       verify=not args.no_verify)
+        import_path(path, settings, log=Recorder(echo=lambda s: print(s, flush=True)),
+                    verify=not args.no_verify)
     except ImportError_ as e:
         print(f"FAILED: {e}", flush=True)
         return 1
     finally:
-        if args.delete_zip:
+        if args.delete_zip and path.is_file():
             path.unlink(missing_ok=True)
     return 0
 
@@ -282,7 +282,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="do nothing if any admin exists (for start scripts)")
     a.set_defaults(fn=cmd_admin)
 
-    i = sub.add_parser("import", help="import a Polygon package zip")
+    i = sub.add_parser("import", help="import a Polygon package zip, or electicode problems "
+                                      "backed up by Platform-Scraper (folder or zip)")
     i.add_argument("package")
     i.add_argument("--no-verify", action="store_true",
                    help="don't run the main solution over tests that already have answers")

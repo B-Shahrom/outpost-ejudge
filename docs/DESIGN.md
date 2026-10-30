@@ -163,9 +163,24 @@ Later:
   the row slides to its new place. Repeat until nothing is hidden. Space or a
   click steps; A plays it automatically. It works even after unfreezing.
   Checked in Chromium: the order it ends on equals the live standings.
-- [ ] **electicode bridge**: import a group's students as users, and push final
-  results or a contest's problems back and forth (via Platform-Scraper's admin
-  API knowledge).
+- [x] **electicode bridge** (done, where it can be): Outpost stays offline, and
+  the online half lives in Platform-Scraper, which already holds electicode
+  sessions.
+  - *Problems, electicode → Outpost:* `outpost import` takes problem folders
+    as `course_backup.py --full-problems` writes them (one folder, a whole
+    backup, or a zip of either): tests, limits, subtask points, and
+    statements in every language (Markdown with math). A custom checker or
+    interactor comes from `source.json`, which course_backup now saves
+    (Platform-Scraper commit 61c5973). It is compiled with the vendored
+    testlib and called the testlib way. Without its source the problem is
+    refused, not judged wrongly. *Unverified:* the backup's new
+    `source.json` step and electicode's checker calling convention haven't
+    met the live platform yet.
+  - *Users:* the CSV import is the interface
+    (`username, name, division, password, team, seat`).
+  - *Results back to electicode:* not possible. The platform has no endpoint
+    that accepts outside results, only its own submissions. Outpost exports
+    standings (CSV) and every submission (JSON) for the record.
 - [x] Post-contest **similarity check** and **failure heat map** (done): the
   admin contest page → *Analysis*. Solutions are compared as normalised
   tokens (identifiers, literals, comments, layout and `#include` lines don't
