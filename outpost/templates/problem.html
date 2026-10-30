@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ prob.label }}. {{ st.name if st else prob.name }} · Outpost{% endblock %}
-{% block head %}<link rel="stylesheet" href="/static/vendor/katex/katex.min.css">{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/vendor/katex/katex.min.css">
+<link rel="stylesheet" href="/static/vendor/codemirror/codemirror.css">{% endblock %}
 {% block content %}
 <div class="tabs">
   {% for p in problems %}<a href="/c/{{ contest.code }}/p/{{ p.label }}{% if lang %}?lang={{ lang }}{% endif %}" class="{{ 'on' if p.label == prob.label }}" title="{{ p.name }}">{{ p.label }}</a>{% endfor %}
@@ -46,7 +47,8 @@
     <label for="file">File</label>
     <input id="file" type="file" name="file" accept=".cpp,.cc,.cxx,.java,.py">
     <label for="src">…or paste the code</label>
-    <textarea id="src" class="code" name="source" rows="14" spellcheck="false" autocapitalize="off"></textarea>
+    <textarea id="src" class="code" name="source" rows="14" spellcheck="false" autocapitalize="off"
+              data-editor data-language-select="lang" data-draft-key="outpost-draft-{{ contest.code }}-{{ prob.label }}"></textarea>
     <p><button class="primary" type="submit">Submit</button></p>
     {% if now > contest.end_at %}<p class="muted small">The contest is over; runs are judged but don't count.</p>{% endif %}
   </form>
@@ -56,4 +58,10 @@
 {% block scripts %}
 <script src="/static/vendor/katex/katex.min.js" defer></script>
 <script src="/static/vendor/katex/auto-render.min.js" defer></script>
+<script src="/static/vendor/codemirror/codemirror.js" defer></script>
+<script src="/static/vendor/codemirror/clike.js" defer></script>
+<script src="/static/vendor/codemirror/python.js" defer></script>
+<script src="/static/vendor/codemirror/matchbrackets.js" defer></script>
+<script src="/static/vendor/codemirror/closebrackets.js" defer></script>
+<script src="/static/editor.js" defer></script>
 {% endblock %}

@@ -358,3 +358,14 @@ def test_balloons_and_print_requests(app, settings, problems):
     admin.post(f"/admin/print-jobs/{jid}/done")
     assert "printed" in one.get("/c/onsite/printer").text
     assert two.get(f"/admin/print-jobs/{jid}").status_code == 403
+
+
+def test_problem_page_has_the_offline_editor(app):
+    ann = client(app, "ann", "pw-ann")
+    page = ann.get("/c/icpc1/p/A").text
+    assert "data-editor" in page and 'data-draft-key="outpost-draft-icpc1-A"' in page
+    for asset in ("/static/vendor/codemirror/codemirror.js", "/static/vendor/codemirror/clike.js",
+                  "/static/vendor/codemirror/python.js", "/static/editor.js",
+                  "/static/vendor/codemirror/codemirror.css"):
+        assert asset in page and ann.get(asset).status_code == 200, asset
+    assert "https://" not in page.split("<main>")[0]  # nothing from the internet in the head

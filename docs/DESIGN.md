@@ -167,4 +167,9 @@ Later:
   standings have one row per team (members listed), every member's runs
   count for it, and teammates share their submissions page and can read
   each other's code, as at ICPC. Users without a team stay individual rows.
-- [ ] A built-in code editor (CodeMirror, vendored) instead of the textarea.
+- [x] **Code editor** (done): vendored CodeMirror 5.65.16 (MIT) on the problem
+  page. It highlights C++, Java and Python following the language picker,
+  with line numbers, bracket matching and closing, Tab indenting with spaces,
+  and line wrapping for the narrow panel. It is themed from the page's
+  colours (light and dark), and a per-problem draft is kept in the browser.
+  Without JavaScript the plain textarea still posts the same field.

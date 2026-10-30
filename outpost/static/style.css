@@ -155,3 +155,24 @@ body.resolver-page #resolver { cursor: pointer; }
 /* balloons */
 .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 1px solid #0003; vertical-align: -2px; }
 .balloon-key { display: inline-flex; gap: 5px; align-items: center; margin-right: 10px; }
+
+/* code editor (vendored CodeMirror 5), themed from the page's tokens. The selectors are
+   one class stronger than codemirror.css's, which loads after this file. */
+:root { --syn-kw: #7a3db8; --syn-str: #1f7a3a; --syn-num: #b4580c; --syn-com: #6b7685; --syn-def: #1d5fbf; --syn-meta: #9a6400; }
+@media (prefers-color-scheme: dark) {
+  :root { --syn-kw: #c79bff; --syn-str: #7fd49a; --syn-num: #f2b75e; --syn-com: #8b95a3; --syn-def: #8db8ff; --syn-meta: #f0c060; }
+}
+.CodeMirror.cm-s-default { height: 380px; border: 1px solid var(--line); border-radius: 6px; font-family: var(--mono);
+  font-size: 13.5px; background: var(--bg); color: var(--text); }
+.CodeMirror.cm-s-default .CodeMirror-gutters { background: var(--panel); border-right: 1px solid var(--line); }
+.CodeMirror.cm-s-default .CodeMirror-linenumber { color: var(--muted); }
+.CodeMirror.cm-s-default .CodeMirror-cursor { border-left-color: var(--text); }
+.CodeMirror.cm-s-default .CodeMirror-selected, .CodeMirror-focused.cm-s-default .CodeMirror-selected { background: var(--info-bg); }
+.CodeMirror.cm-s-default .CodeMirror-matchingbracket { color: var(--ok) !important; font-weight: 700; }
+.CodeMirror.cm-s-default .cm-keyword, .CodeMirror.cm-s-default .cm-type, .CodeMirror.cm-s-default .cm-variable-3 { color: var(--syn-kw); }
+.CodeMirror.cm-s-default .cm-string, .CodeMirror.cm-s-default .cm-string-2 { color: var(--syn-str); }
+.CodeMirror.cm-s-default .cm-number, .CodeMirror.cm-s-default .cm-atom { color: var(--syn-num); }
+.CodeMirror.cm-s-default .cm-comment { color: var(--syn-com); font-style: italic; }
+.CodeMirror.cm-s-default .cm-def, .CodeMirror.cm-s-default .cm-builtin { color: var(--syn-def); }
+.CodeMirror.cm-s-default .cm-meta { color: var(--syn-meta); }
+.CodeMirror.cm-s-default .cm-variable, .CodeMirror.cm-s-default .cm-operator, .CodeMirror.cm-s-default .cm-property { color: var(--text); }
