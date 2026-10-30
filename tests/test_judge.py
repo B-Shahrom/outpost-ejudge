@@ -156,3 +156,19 @@ def test_selftest_passes(settings, capsys):
     from outpost import selftest
     assert selftest.run() == 0, capsys.readouterr().out
     assert capsys.readouterr().out.rstrip().endswith("Ready.")
+
+
+def _build_pch(path):
+    from outpost import languages
+    return str(languages.prepare_pch(path, log=lambda _: None))
+
+
+def test_precompiled_header_built_by_two_processes_at_once(tmp_path):
+    # The start scripts start the server and run `outpost selftest` back to
+    # back; both build the header on first start (this used to crash one).
+    import multiprocessing as mp
+    with mp.get_context("spawn").Pool(2) as pool:
+        results = pool.map(_build_pch, [tmp_path / "pch"] * 2)
+    assert results == [str(tmp_path / "pch")] * 2
+    assert (tmp_path / "pch" / "bits" / "stdc++.h.gch").exists()
+    assert not list((tmp_path / "pch" / "bits").glob("*.tmp"))

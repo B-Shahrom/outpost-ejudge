@@ -41,6 +41,8 @@ def cmd_serve(args, settings) -> int:
           f"network isolation {'on' if pool.isolated else 'OFF'}")
     if settings.public_url:
         print(f"  contestants: {settings.public_url}")
+    elif config.in_container():
+        print("  contestants: set the address on the admin dashboard (a container can't see it)")
     else:
         for ip in lan_addresses():
             print(f"  contestants: http://{ip}:{settings.port}/")

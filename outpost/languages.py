@@ -6,6 +6,7 @@ filters line up with the platform.
 
 from __future__ import annotations
 
+import fcntl
 import os
 import shutil
 import subprocess
@@ -81,20 +82,31 @@ def prepare_pch(pch_dir: Path, log=print) -> Path | None:
     stamp_text = version + "\n" + " ".join(flags)
     gch = pch_dir / "bits" / "stdc++.h.gch"
     stamp = pch_dir / "stamp"
-    if gch.exists() and stamp.exists() and stamp.read_text() == stamp_text:
+
+    def ready() -> bool:
+        return gch.exists() and stamp.exists() and stamp.read_text() == stamp_text
+
+    if ready():
         return pch_dir
-    log("Preparing the C++ precompiled header (once per g++ version, ~10 s)…")
     gch.parent.mkdir(parents=True, exist_ok=True)
-    wrapper = pch_dir / "pch.h"
-    wrapper.write_text("#include <bits/stdc++.h>\n")
-    tmp = gch.with_suffix(".tmp")
-    res = subprocess.run(["g++", *flags, "-x", "c++-header", str(wrapper), "-o", str(tmp)],
-                         capture_output=True, text=True)
-    if res.returncode != 0:
-        log("  could not build it (compiles will just be slower): " + res.stderr[-300:])
-        return None
-    os.replace(tmp, gch)
-    stamp.write_text(stamp_text)
+    # The server and `outpost selftest` may both get here at once (the start
+    # scripts run them back to back): one builds, the other waits and reuses it.
+    with open(pch_dir / "build.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if ready():
+            return pch_dir
+        log("Preparing the C++ precompiled header (once per g++ version, ~10 s)…")
+        wrapper = pch_dir / "pch.h"
+        wrapper.write_text("#include <bits/stdc++.h>\n")
+        tmp = gch.with_name(f"stdc++.h.gch.{os.getpid()}.tmp")
+        res = subprocess.run(["g++", *flags, "-x", "c++-header", str(wrapper), "-o", str(tmp)],
+                             capture_output=True, text=True)
+        if res.returncode != 0:
+            tmp.unlink(missing_ok=True)
+            log("  could not build it (compiles will just be slower): " + res.stderr[-300:])
+            return None
+        os.replace(tmp, gch)
+        stamp.write_text(stamp_text)
     # Sandboxed compiles run as other uids and must be able to read it.
     for d in (pch_dir, gch.parent):
         d.chmod(0o755)
