@@ -39,6 +39,7 @@
       <p class="muted small">None yet.</p>
     {% endfor %}
     <p class="small"><a href="/c/{{ contest.code }}/clarifications">Ask a question →</a></p>
+    {% if problems %}<p class="small"><a href="/c/{{ contest.code }}/print">Print all statements →</a></p>{% endif %}
   </div>
 </div>
 </div>

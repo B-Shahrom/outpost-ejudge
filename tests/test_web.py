@@ -225,3 +225,31 @@ def test_mdns_name_is_offered_after_the_ip(app):
     finally:
         app.state.mdns_host = None
         admin.post("/admin/address", data={"url": ""})
+
+
+def test_print_view_and_merged_pdf(app, settings, problems):
+    import io
+
+    from pypdf import PdfReader, PdfWriter
+    admin = client(app, "jury", "jurypass")
+    make_contest(admin, "print1", "icpc")
+    add_problem(admin, "print1", problems["a-plus-b"])
+    add_problem(admin, "print1", problems["guess"])
+    page = admin.get("/c/print1/print").text
+    assert page.index("A. A + B") < page.index("B. Guess the Number")
+    assert page.count('class="panel statement print-problem"') == 2
+    # Not every problem has a PDF: no merge, only the print view.
+    assert admin.get("/c/print1/statements.pdf").status_code == 404
+    make_contest(admin, "print2", "icpc")
+    add_problem(admin, "print2", problems["a-plus-b"], "A")
+    pdf = settings.problems_dir / "a-plus-b" / "statements" / "english" / "problem.pdf"
+    w = PdfWriter()
+    w.add_blank_page(width=200, height=200)
+    w.add_blank_page(width=200, height=200)
+    w.write(str(pdf))
+    try:
+        r = admin.get("/c/print2/statements.pdf")
+        assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
+        assert len(PdfReader(io.BytesIO(r.content)).pages) == 2
+    finally:
+        pdf.unlink()

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ contest.name }} — statements{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/vendor/katex/katex.min.css">
+<style>
+  .print-problem { break-before: page; }
+  .print-problem:first-of-type { break-before: auto; }
+  .print-problem table.samples-print { width: 100%; border-collapse: collapse; margin: 6px 0 12px; }
+  .print-problem table.samples-print td, .print-problem table.samples-print th { border: 1px solid #999; vertical-align: top; padding: 4px 8px; }
+  .print-problem table.samples-print pre { background: none; padding: 0; white-space: pre-wrap; }
+  @media print {
+    body { background: #fff; color: #000; }
+    .panel { border: 0; padding: 0; }
+    .statement { font-size: 12pt; }
+  }
+</style>{% endblock %}
+{% block content %}
+<div class="row no-print" style="margin-bottom:12px">
+  <h1>{{ contest.name }} — all statements</h1><span class="spacer"></span>
+  {% if langs|length > 1 %}<span class="small">{% for l in langs %}{% if l == lang %}<b>{{ l }}</b>{% else %}<a href="?lang={{ l }}">{{ l }}</a>{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</span>{% endif %}
+  {% if pdf_ok %}<a class="btn" href="/c/{{ contest.code }}/statements.pdf{% if lang %}?lang={{ lang }}{% endif %}">Package PDFs, merged</a>{% endif %}
+  <button class="primary" type="button" onclick="window.print()">Print</button>
+</div>
+{% for i in items %}
+<article class="panel statement print-problem">
+  <h2 style="margin-top:0">{{ i.p.label }}. {{ i.st.name if i.st else i.p.name }}</h2>
+  <p class="limits">Time limit {{ i.p.time_limit_ms / 1000 }} s · Memory limit {{ i.p.memory_limit_mb }} MB{% if i.p.interactive %} · interactive{% endif %}</p>
+  {% if i.st %}
+    {{ i.st.legend|safe }}
+    {% if i.st.input %}<h3>Input</h3>{{ i.st.input|safe }}{% endif %}
+    {% if i.st.output %}<h3>Output</h3>{{ i.st.output|safe }}{% endif %}
+    {% if i.st.interaction %}<h3>Interaction</h3>{{ i.st.interaction|safe }}{% endif %}
+    {% if i.st.scoring %}<h3>Scoring</h3>{{ i.st.scoring|safe }}{% endif %}
+    {% if i.st.samples %}
+      <h3>{{ 'Example' if i.st.samples|length == 1 else 'Examples' }}</h3>
+      <table class="samples-print"><tr><th>input</th><th>output</th></tr>
+      {% for s in i.st.samples %}<tr><td><pre>{{ s.input }}</pre></td><td><pre>{{ s.output }}</pre></td></tr>{% endfor %}
+      </table>
+    {% endif %}
+    {% if i.st.notes %}<h3>Note</h3>{{ i.st.notes|safe }}{% endif %}
+  {% else %}<p class="muted">No statement text in this problem's package.</p>{% endif %}
+</article>
+{% endfor %}
+{% endblock %}
+{% block scripts %}
+<script src="/static/vendor/katex/katex.min.js" defer></script>
+<script src="/static/vendor/katex/auto-render.min.js" defer></script>
+{% endblock %}

@@ -280,6 +280,53 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
             flash(request, "The contest is over: this run is judged but doesn't count.")
         raise Redirect(f"/c/{code}/submissions")
 
+    def statement_set(c, contest, u, lang: str | None):
+        """Every problem's statement in ``lang`` (or its first language), in contest order."""
+        out, langs = [], []
+        for p in contest_problems(c, contest, u):
+            st = db.loads(p["statements_json"], {})
+            for l in st:
+                if l not in langs:
+                    langs.append(l)
+            chosen = lang if lang in st else ("english" if "english" in st else next(iter(st), None))
+            out.append({"p": p, "st": st.get(chosen) if chosen else None, "lang": chosen})
+        return out, langs
+
+    @app.get("/c/{code}/print", response_class=HTMLResponse)
+    def print_statements(request: Request, code: str, lang: str | None = None):
+        """All statements on one page, one problem per printed page."""
+        c = conn(request)
+        u = need_user(request, c)
+        contest = contest_by_code(c, code, u)
+        if not started(contest, u):
+            raise Redirect(f"/c/{code}")
+        items, langs = statement_set(c, contest, u, lang)
+        pdf_ok = bool(items) and all(i["st"] and i["st"].get("pdf") for i in items)
+        return render(request, "print.html", c, contest=contest, items=items, langs=langs,
+                      lang=lang or (items[0]["lang"] if items else None), pdf_ok=pdf_ok)
+
+    @app.get("/c/{code}/statements.pdf")
+    def statements_pdf(request: Request, code: str, lang: str | None = None):
+        """The packages' own PDFs, merged in contest order (every problem must have one)."""
+        c = conn(request)
+        u = need_user(request, c)
+        contest = contest_by_code(c, code, u)
+        if not started(contest, u):
+            raise HTTPException(404)
+        items, _ = statement_set(c, contest, u, lang)
+        files = [settings.problems_dir / i["p"]["slug"] / "statements" / (i["lang"] or "") / "problem.pdf"
+                 for i in items]
+        if not files or not all(f.is_file() for f in files):
+            raise HTTPException(404, "Not every problem has a PDF statement; use the print view.")
+        from pypdf import PdfWriter
+        writer = PdfWriter()
+        for f in files:
+            writer.append(str(f))
+        buf = io.BytesIO()
+        writer.write(buf)
+        return Response(buf.getvalue(), media_type="application/pdf", headers={
+            "Content-Disposition": f'inline; filename="{code}-statements.pdf"'})
+
     @app.get("/c/{code}/submissions", response_class=HTMLResponse)
     def my_submissions(request: Request, code: str):
         c = conn(request)

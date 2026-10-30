@@ -17,6 +17,7 @@ dependencies = [
   "itsdangerous>=2.1",
   "segno>=1.6",
   "zeroconf>=0.130",
+  "pypdf>=4",
 ]
 
 [project.optional-dependencies]

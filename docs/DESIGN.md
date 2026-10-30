@@ -112,8 +112,11 @@ Next:
   (Linux type when built full, so the tests are already generated). It warns
   when that package is older than the problem's revision. Tested against a
   fake Polygon that checks every signature; not yet run against the real one.
-- [ ] **Statement PDF for the whole contest** (merge the per-problem PDFs) for
-  printing.
+- [x] **Printable statements** (done): `/c/<code>/print` puts every problem on
+  its own printed page (KaTeX math, examples as a table), in any statement
+  language, so it works for packages without PDFs. When every problem has a
+  PDF in that language, `/c/<code>/statements.pdf` merges the packages' own
+  LaTeX-typeset PDFs (pypdf).
 - [ ] **Contest archive**: export or import a contest with problems,
   users and submissions as one zip.
 - [ ] **Remote judge workers**: other laptops on the network join with

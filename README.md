@@ -91,6 +91,8 @@ it every time.
    with penalty), penalty minutes, freeze minutes, divisions. Then add problems.
    A problem can be limited to some of the contest's divisions.
 4. Turn on the laptop's hotspot and show the QR code from the dashboard.
+   For paper copies, **Print statements** on the contest page puts every
+   problem on its own page.
 5. During the contest, use **Questions** to answer clarifications (privately or
    for everyone) and post announcements. **Submissions** filters and rejudges.
    Open **Standings → Projector view** on the wall screen.
