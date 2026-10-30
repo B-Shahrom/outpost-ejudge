@@ -98,9 +98,13 @@ Next:
   the dashboard and slips because Android browsers don't reliably resolve
   `.local`. It is off in containers, since Docker Desktop doesn't pass
   multicast to the hotspot; `OUTPOST_MDNS=1` forces it on, `0` turns it off.
-- [ ] **Polygon API pull**: download packages straight from Polygon during prep
-  (needs the internet only then). It can reuse Platform-Scraper's Polygon
-  client.
+- [x] **Polygon API pull** (done): Problems → *Import from Polygon*, or
+  `outpost polygon list|import|build`. It is a standard-library client written
+  from Polygon's API docs. It signs every call, retries when Polygon answers
+  with an HTML page (rate-limited), and imports the newest READY package
+  (Linux type when built full, so the tests are already generated). It warns
+  when that package is older than the problem's revision. Tested against a
+  fake Polygon that checks every signature; not yet run against the real one.
 - [ ] **Statement PDF for the whole contest** (merge the per-problem PDFs) for
   printing.
 - [ ] **Contest archive**: export or import a contest with problems,

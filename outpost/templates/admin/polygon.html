@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Polygon · Outpost{% endblock %}
+{% block content %}
+<div class="row"><h1>Import from Polygon</h1><span class="spacer"></span><a class="btn" href="/admin/problems">Back to problems</a></div>
+<p class="muted">Needs the internet, so do it while preparing, not in the contest room. Outpost downloads each problem's newest <i>ready</i> package (build packages in Polygon, or with the button below) and imports it like an uploaded zip.</p>
+<div class="panel">
+  <h3 style="margin-top:0">API key</h3>
+  <form method="post" action="/admin/polygon/credentials" class="row">
+    <input type="text" name="key" value="{{ key }}" placeholder="API key" aria-label="Polygon API key" style="flex:1;min-width:200px">
+    <input type="password" name="secret" placeholder="{{ 'secret saved — leave empty to keep it' if has_secret else 'API secret' }}" aria-label="Polygon API secret" style="flex:1;min-width:200px" autocomplete="off">
+    <button type="submit">Save</button>
+  </form>
+  <p class="small muted">Polygon → Settings → API keys → Create. The secret stays on this machine.</p>
+</div>
+{% if error %}<div class="flash">{{ error }}</div>{% endif %}
+{% if api %}
+<div class="panel table-wrap">
+  {% if rows is none %}
+    <p><a class="btn primary" href="/admin/polygon?load=1">Load my Polygon problems</a></p>
+  {% elif rows %}
+  <form method="post" action="/admin/polygon/import">
+  <table>
+    <tr><th></th><th>Problem</th><th class="num">Revision</th><th>Newest package</th><th></th></tr>
+    {% for p in rows %}
+    <tr>
+      <td><input type="checkbox" name="problem" value="{{ p.id }}" aria-label="Import {{ p.name }}"{% if not p.package %} disabled{% endif %}></td>
+      <td class="mono">{{ p.name }}{% if p.imported %} <span class="pill ok">imported</span>{% endif %}</td>
+      <td class="num">{{ p.revision }}</td>
+      <td>{% if p.package %}revision {{ p.package }}{% if p.package < p.revision %} <span class="pill warn">older than the problem</span>{% endif %}{% else %}<span class="muted">none</span>{% endif %}</td>
+      <td><button type="submit" formaction="/admin/polygon/build" name="build" value="{{ p.id }}" class="link">build package</button></td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p><button class="primary" type="submit">Import ticked problems</button></p>
+  </form>
+  {% else %}<p class="muted">This Polygon account has no problems.</p>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

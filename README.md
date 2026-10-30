@@ -74,7 +74,10 @@ it every time.
 
 ## Running a contest
 
-1. **Problems → Import** the Polygon package zip. Polygon's *Linux* or *Windows*
+1. **Problems → Import** the Polygon package zip, or **Import from Polygon**:
+   paste an API key from Polygon (Settings → API keys), tick problems, and
+   Outpost downloads their newest packages. This needs the internet, so do it
+   while preparing. Polygon's *Linux* or *Windows*
    package includes the tests. A *Standard* package also works: any missing test
    is built by running the package's generator with that test's command. Missing
    answers come from the **main** solution only. Every import runs the main

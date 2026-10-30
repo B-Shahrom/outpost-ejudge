@@ -4,6 +4,7 @@
     outpost admin NAME [--password P]  create (or reset) an admin account
     outpost import PACKAGE.zip         import a Polygon package
     outpost users FILE.csv             create contestants from username,name,division[,password]
+    outpost polygon list|import|build  work with your Polygon account (needs the internet)
     outpost selftest                   check compilers and the sandbox before a contest
     outpost judge                      judge everything pending, then exit (no server)
 """
@@ -13,6 +14,7 @@ from __future__ import annotations
 import argparse
 import csv
 import dataclasses
+import os
 import sys
 from pathlib import Path
 
@@ -157,6 +159,69 @@ def cmd_users(args, settings) -> int:
     return 0
 
 
+def _polygon(settings):
+    from .polygon_api import PolygonAPI
+    db.init(settings.db_path)
+    conn = db.connect(settings.db_path)
+    key = os.environ.get("OUTPOST_POLYGON_KEY") or db.get_setting(conn, "polygon_key")
+    secret = os.environ.get("OUTPOST_POLYGON_SECRET") or db.get_setting(conn, "polygon_secret")
+    if not key or not secret:
+        raise SystemExit("No Polygon API key: save one on the admin's Polygon page, or set "
+                         "OUTPOST_POLYGON_KEY and OUTPOST_POLYGON_SECRET.")
+    return PolygonAPI(key, secret)
+
+
+def cmd_polygon(args, settings) -> int:
+    from .polygon import ImportError_, Recorder, import_package
+    from .polygon_api import PolygonError
+
+    settings.ensure_dirs()
+    say = lambda s: print(s, flush=True)  # noqa: E731
+    try:
+        api = _polygon(settings)
+        problems = api.problems()
+        if args.action == "list":
+            for p in sorted(problems, key=lambda p: p["name"]):
+                pkg = p.get("latestPackage")  # newest packaged revision, if any
+                print(f"{p['id']:>8}  {p['name']:<30} rev {p.get('revision', '?'):<4} "
+                      f"package: {('rev ' + str(pkg)) if pkg else 'none'}")
+            return 0
+        failed = 0
+        for ref in args.problems:
+            match = [p for p in problems if str(p["id"]) == ref or p["name"] == ref]
+            if not match:
+                say(f"{ref}: no such problem in this Polygon account")
+                failed += 1
+                continue
+            p = match[0]
+            if args.action == "build":
+                api.build_package(p["id"])
+                say(f"{p['name']}: Polygon is building a package")
+                continue
+            pkg = api.latest_package(p["id"])
+            if pkg is None:
+                say(f"{p['name']}: no ready package. Build one in Polygon (or `outpost polygon build {p['id']}`).")
+                failed += 1
+                continue
+            if int(pkg.get("revision", 0)) < int(p.get("revision", 0)):
+                say(f"{p['name']}: WARNING the newest package is revision {pkg.get('revision')}, the problem "
+                    f"is at {p.get('revision')}; importing the package anyway")
+            say(f"{p['name']}: downloading package {pkg['id']} (revision {pkg.get('revision')})…")
+            zip_path = settings.uploads_dir / f"polygon-{p['id']}-{pkg['id']}.zip"
+            zip_path.write_bytes(api.download(p["id"], pkg))
+            try:
+                import_package(zip_path, settings, log=Recorder(echo=say))
+            except ImportError_ as e:
+                say(f"{p['name']}: FAILED: {e}")
+                failed += 1
+            finally:
+                zip_path.unlink(missing_ok=True)
+        return 1 if failed else 0
+    except PolygonError as e:
+        say(f"FAILED: {e}")
+        return 1
+
+
 def cmd_selftest(args, settings) -> int:
     from .selftest import run
     return run()
@@ -199,6 +264,11 @@ def main(argv: list[str] | None = None) -> int:
     u = sub.add_parser("users", help="create contestants from a CSV; prints their passwords")
     u.add_argument("csv")
     u.set_defaults(fn=cmd_users)
+
+    pg = sub.add_parser("polygon", help="list, import or build problems from your Polygon account")
+    pg.add_argument("action", choices=["list", "import", "build"])
+    pg.add_argument("problems", nargs="*", help="problem ids or names (import, build)")
+    pg.set_defaults(fn=cmd_polygon)
 
     t = sub.add_parser("selftest", help="check compilers and the sandbox on this machine")
     t.set_defaults(fn=cmd_selftest)

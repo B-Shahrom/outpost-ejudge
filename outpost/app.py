@@ -9,6 +9,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import os
 import socket
 import sqlite3
 import subprocess
@@ -74,8 +75,20 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
     app.state.batches: dict[str, list[dict]] = {}
 
     # -- plumbing ------------------------------------------------------------
-    def conn() -> sqlite3.Connection:
-        return db.connect(settings.db_path)
+    def conn(request: Request) -> sqlite3.Connection:
+        """This request's database connection (opened once, closed after the response)."""
+        if getattr(request.state, "db", None) is None:
+            request.state.db = db.connect(settings.db_path)
+        return request.state.db
+
+    @app.middleware("http")
+    async def close_db(request: Request, call_next):
+        try:
+            return await call_next(request)
+        finally:
+            c = getattr(request.state, "db", None)
+            if c is not None:
+                c.close()
 
     @app.exception_handler(Redirect)
     async def _redirect(_req: Request, exc: Redirect):
@@ -134,12 +147,12 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
     # -- sign in -----------------------------------------------------------------
     @app.get("/login", response_class=HTMLResponse)
     def login_form(request: Request):
-        c = conn()
+        c = conn(request)
         return render(request, "login.html", c, user=None)
 
     @app.post("/login")
     def login(request: Request, username: str = Form(...), password: str = Form(...)):
-        c = conn()
+        c = conn(request)
         u = db.one(c, "SELECT * FROM users WHERE username=?", (username.strip(),))
         if u is None or not auth.check_password(password, u["password_hash"]):
             flash(request, "Wrong username or password.")
@@ -157,7 +170,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
     # -- contestant ------------------------------------------------------------------
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request):
-        c = conn()
+        c = conn(request)
         u = need_user(request, c)
         contests = [x for x in db.all_(c, "SELECT * FROM contests ORDER BY start_at DESC")
                     if can_see(x, u)]
@@ -168,7 +181,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.get("/c/{code}", response_class=HTMLResponse)
     def contest_home(request: Request, code: str):
-        c = conn()
+        c = conn(request)
         u = need_user(request, c)
         contest = contest_by_code(c, code, u)
         problems = contest_problems(c, contest, u) if started(contest, u) else []
@@ -193,7 +206,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.get("/c/{code}/p/{label}", response_class=HTMLResponse)
     def problem_page(request: Request, code: str, label: str, lang: str | None = None):
-        c = conn()
+        c = conn(request)
         u = need_user(request, c)
         contest = contest_by_code(c, code, u)
         if not started(contest, u):
@@ -213,7 +226,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.get("/problem-files/{slug}/{lang}/{name}")
     def problem_file(request: Request, slug: str, lang: str, name: str):
-        c = conn()
+        c = conn(request)
         u = need_user(request, c)
         prob = db.one(c, "SELECT id FROM problems WHERE slug=?", (slug,))
         if prob is None:
@@ -233,7 +246,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
     @app.post("/c/{code}/submit")
     async def submit(request: Request, code: str, label: str = Form(...), language: str = Form(...),
                      source: str = Form(""), file: UploadFile | None = File(None)):
-        c = conn()
+        c = conn(request)
         u = need_user(request, c)
         contest = contest_by_code(c, code, u)
         back = f"/c/{code}/p/{label}"
@@ -269,7 +282,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.get("/c/{code}/submissions", response_class=HTMLResponse)
     def my_submissions(request: Request, code: str):
-        c = conn()
+        c = conn(request)
         u = need_user(request, c)
         contest = contest_by_code(c, code, u)
         subs = db.all_(c, """
@@ -282,7 +295,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.get("/c/{code}/s/{sid}", response_class=HTMLResponse)
     def submission_page(request: Request, code: str, sid: int):
-        c = conn()
+        c = conn(request)
         u = need_user(request, c)
         contest = contest_by_code(c, code, u)
         sub = db.one(c, """SELECT s.*, cp.label, p.name, p.slug FROM submissions s
@@ -296,7 +309,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.get("/api/c/{code}/my-submissions")
     def my_submissions_json(request: Request, code: str):
-        c = conn()
+        c = conn(request)
         u = need_user(request, c)
         contest = contest_by_code(c, code, u)
         rows = db.all_(c, """SELECT id, status, verdict, score, max_score, time_ms, memory_kb,
@@ -307,7 +320,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.get("/c/{code}/standings", response_class=HTMLResponse)
     def standings_page(request: Request, code: str, division: str | None = None):
-        c = conn()
+        c = conn(request)
         u = need_user(request, c)
         contest = contest_by_code(c, code, u)
         if not u["is_admin"] and not contest["public_standings"]:
@@ -318,7 +331,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.get("/c/{code}/clarifications", response_class=HTMLResponse)
     def clar_page(request: Request, code: str):
-        c = conn()
+        c = conn(request)
         u = need_user(request, c)
         contest = contest_by_code(c, code, u)
         items = db.all_(c, """
@@ -332,7 +345,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.post("/c/{code}/clarifications")
     def ask(request: Request, code: str, question: str = Form(...), label: str = Form("")):
-        c = conn()
+        c = conn(request)
         u = need_user(request, c)
         contest = contest_by_code(c, code, u)
         prob = next((p for p in contest_problems(c, contest, u) if p["label"] == label), None)
@@ -346,7 +359,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.get("/api/c/{code}/news")
     def news_json(request: Request, code: str):
-        c = conn()
+        c = conn(request)
         u = need_user(request, c)
         contest = contest_by_code(c, code, u)
         row = db.one(c, """SELECT MAX(answered_at) AS t FROM clarifications WHERE contest_id=?
@@ -356,7 +369,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
     # -- admin ---------------------------------------------------------------------------
     @app.get("/admin", response_class=HTMLResponse)
     def admin_home(request: Request):
-        c = conn()
+        c = conn(request)
         need_admin(request, c)
         urls, source = contestant_urls(c)
         qr = segno.make(urls[0]).svg_inline(scale=5, dark="#111", light="#fff", omitsize=True) if urls else ""
@@ -392,7 +405,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.post("/admin/address")
     def admin_address(request: Request, url: str = Form("")):
-        c = conn()
+        c = conn(request)
         need_admin(request, c)
         db.set_setting(c, "public_url", config.normalise_url(url))
         flash(request, "Address saved." if url.strip() else "Address cleared: using the detected one.")
@@ -401,7 +414,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
     # problems
     @app.get("/admin/problems", response_class=HTMLResponse)
     def admin_problems(request: Request):
-        c = conn()
+        c = conn(request)
         need_admin(request, c)
         poll_imports()
         return render(request, "admin/problems.html", c,
@@ -418,28 +431,94 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.post("/admin/problems/import")
     async def admin_import(request: Request, package: UploadFile = File(...)):
-        c = conn()
+        c = conn(request)
         need_admin(request, c)
         job_id = f"{int(time.time() * 1000)}"
         zip_path = settings.uploads_dir / f"{job_id}.zip"
         with open(zip_path, "wb") as f:
             while chunk := await package.read(1 << 20):
                 f.write(chunk)
-        log_path = settings.uploads_dir / f"{job_id}.log"
-        # Imports compile and run code: a separate process keeps that off the
-        # web server's threads (and a crash in a package off the server).
-        proc = subprocess.Popen([sys.executable, "-m", "outpost", "import", str(zip_path),
-                                 "--delete-zip"], stdout=open(log_path, "wb"),
-                                stderr=subprocess.STDOUT, cwd=Path(__file__).parent.parent)
-        app.state.imports[job_id] = {"id": job_id, "name": package.filename, "proc": proc,
-                                     "status": "running", "log_path": str(log_path),
-                                     "started": time.time(), "log": ""}
+        start_import_job(job_id, package.filename or "package.zip",
+                         ["import", str(zip_path), "--delete-zip"])
         flash(request, f"Importing {package.filename}…")
         raise Redirect("/admin/problems")
 
+    def start_import_job(job_id: str, name: str, args: list[str]) -> None:
+        """Run ``outpost <args>`` in the background; its output is the job's log.
+
+        Imports compile and run code: a separate process keeps that off the
+        web server's threads (and a crash in a package off the server).
+        """
+        log_path = settings.uploads_dir / f"{job_id}.log"
+        proc = subprocess.Popen([sys.executable, "-m", "outpost", *args], stdout=open(log_path, "wb"),
+                                stderr=subprocess.STDOUT, cwd=Path(__file__).parent.parent)
+        app.state.imports[job_id] = {"id": job_id, "name": name, "proc": proc, "status": "running",
+                                     "log_path": str(log_path), "started": time.time(), "log": ""}
+
+    # Polygon
+    def polygon_client(c):
+        from .polygon_api import PolygonAPI
+        key = db.get_setting(c, "polygon_key") or os.environ.get("OUTPOST_POLYGON_KEY", "")
+        secret = db.get_setting(c, "polygon_secret") or os.environ.get("OUTPOST_POLYGON_SECRET", "")
+        return PolygonAPI(key, secret) if key and secret else None
+
+    @app.get("/admin/polygon", response_class=HTMLResponse)
+    def admin_polygon(request: Request, load: int = 0):
+        from .polygon_api import PolygonError
+        c = conn(request)
+        need_admin(request, c)
+        api, rows, error = polygon_client(c), None, None
+        if api and load:
+            try:
+                rows = []
+                for p in sorted(api.problems(), key=lambda p: p["name"]):
+                    pkg = p.get("latestPackage")  # the newest packaged revision (an int), if any
+                    rows.append({"id": p["id"], "name": p["name"], "revision": p.get("revision"),
+                                 "package": pkg, "access": p.get("accessType"),
+                                 "imported": bool(db.one(c, "SELECT 1 FROM problems WHERE slug=?", (p["name"],)))})
+            except PolygonError as e:
+                error = str(e)
+        return render(request, "admin/polygon.html", c, key=db.get_setting(c, "polygon_key"),
+                      has_secret=bool(db.get_setting(c, "polygon_secret")), api=api, rows=rows, error=error)
+
+    @app.post("/admin/polygon/credentials")
+    def admin_polygon_credentials(request: Request, key: str = Form(""), secret: str = Form("")):
+        c = conn(request)
+        need_admin(request, c)
+        db.set_setting(c, "polygon_key", key.strip())
+        if secret.strip() or not key.strip():
+            db.set_setting(c, "polygon_secret", secret.strip())
+        flash(request, "Polygon key saved." if key.strip() else "Polygon key removed.")
+        raise Redirect("/admin/polygon?load=1" if key.strip() else "/admin/polygon")
+
+    @app.post("/admin/polygon/import")
+    async def admin_polygon_import(request: Request):
+        c = conn(request)
+        need_admin(request, c)
+        ids = [str(v) for k, v in (await request.form()).multi_items() if k == "problem"]
+        if not ids:
+            flash(request, "Tick the problems to import.")
+            raise Redirect("/admin/polygon?load=1")
+        start_import_job(f"{int(time.time() * 1000)}", f"Polygon: {len(ids)} problem(s)",
+                         ["polygon", "import", *ids])
+        flash(request, f"Downloading and importing {len(ids)} problem(s) from Polygon…")
+        raise Redirect("/admin/problems")
+
+    @app.post("/admin/polygon/build")
+    def admin_polygon_build(request: Request, build: int = Form(...)):
+        from .polygon_api import PolygonError
+        c = conn(request)
+        need_admin(request, c)
+        try:
+            polygon_client(c).build_package(build)
+            flash(request, "Polygon is building a new package (a few minutes). Reload this list to see it.")
+        except (PolygonError, AttributeError) as e:
+            flash(request, f"Polygon refused: {e}")
+        raise Redirect("/admin/polygon?load=1")
+
     @app.get("/admin/problems/{pid}", response_class=HTMLResponse)
     def admin_problem(request: Request, pid: int, lang: str | None = None):
-        c = conn()
+        c = conn(request)
         need_admin(request, c)
         prob = db.one(c, "SELECT * FROM problems WHERE id=?", (pid,))
         if prob is None:
@@ -455,7 +534,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
     @app.post("/admin/problems/{pid}/limits")
     def admin_problem_limits(request: Request, pid: int, time_limit_ms: int = Form(...),
                              memory_limit_mb: int = Form(...)):
-        c = conn()
+        c = conn(request)
         need_admin(request, c)
         c.execute("UPDATE problems SET time_limit_ms=?, memory_limit_mb=? WHERE id=?",
                   (max(100, time_limit_ms), max(16, memory_limit_mb), pid))
@@ -464,7 +543,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.post("/admin/problems/{pid}/delete")
     def admin_problem_delete(request: Request, pid: int):
-        c = conn()
+        c = conn(request)
         need_admin(request, c)
         prob = db.one(c, "SELECT slug FROM problems WHERE id=?", (pid,))
         if prob:
@@ -476,7 +555,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
     # contests
     @app.get("/admin/contests", response_class=HTMLResponse)
     def admin_contests(request: Request):
-        c = conn()
+        c = conn(request)
         need_admin(request, c)
         return render(request, "admin/contests.html", c,
                       contests=db.all_(c, "SELECT * FROM contests ORDER BY start_at DESC"),
@@ -502,7 +581,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.post("/admin/contests")
     async def admin_contest_create(request: Request):
-        c = conn()
+        c = conn(request)
         need_admin(request, c)
         form = await request.form()
         code = str(form["code"]).strip()
@@ -517,7 +596,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.get("/admin/contests/{code}", response_class=HTMLResponse)
     def admin_contest(request: Request, code: str):
-        c = conn()
+        c = conn(request)
         u = need_admin(request, c)
         contest = contest_by_code(c, code, u)
         return render(request, "admin/contest.html", c, contest=contest, admin_page=True,
@@ -531,7 +610,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.post("/admin/contests/{code}")
     async def admin_contest_update(request: Request, code: str):
-        c = conn()
+        c = conn(request)
         u = need_admin(request, c)
         contest = contest_by_code(c, code, u)
         vals = contest_form_values(await request.form())
@@ -543,7 +622,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
     @app.post("/admin/contests/{code}/problems")
     def admin_contest_add_problem(request: Request, code: str, problem_id: int = Form(...),
                                   label: str = Form(""), divisions: str = Form("")):
-        c = conn()
+        c = conn(request)
         u = need_admin(request, c)
         contest = contest_by_code(c, code, u)
         existing = contest_problems(c, contest, u)
@@ -556,7 +635,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.post("/admin/contests/{code}/problems/order")
     async def admin_contest_order(request: Request, code: str):
-        c = conn()
+        c = conn(request)
         u = need_admin(request, c)
         contest = contest_by_code(c, code, u)
         form = await request.form()
@@ -576,7 +655,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.post("/admin/contests/{code}/unfreeze")
     def admin_unfreeze(request: Request, code: str, value: int = Form(1)):
-        c = conn()
+        c = conn(request)
         u = need_admin(request, c)
         contest = contest_by_code(c, code, u)
         c.execute("UPDATE contests SET unfrozen=? WHERE id=?", (value, contest["id"]))
@@ -585,7 +664,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.get("/admin/contests/{code}/standings.csv")
     def admin_standings_csv(request: Request, code: str):
-        c = conn()
+        c = conn(request)
         u = need_admin(request, c)
         contest = contest_by_code(c, code, u)
         board = scoring.standings(c, contest, live=True)
@@ -594,7 +673,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.get("/admin/contests/{code}/export.json")
     def admin_export(request: Request, code: str):
-        c = conn()
+        c = conn(request)
         u = need_admin(request, c)
         contest = contest_by_code(c, code, u)
         subs = db.all_(c, """SELECT s.id, u.username, u.division, cp.label, p.slug, s.language,
@@ -613,7 +692,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
     @app.get("/admin/submissions", response_class=HTMLResponse)
     def admin_submissions(request: Request, contest: str = "", problem: str = "", verdict: str = "",
                           user: str = "", page: int = 1):
-        c = conn()
+        c = conn(request)
         need_admin(request, c)
         where, params = submission_filter(c, contest, problem, verdict, user)
         subs = db.all_(c, f"""
@@ -649,7 +728,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.get("/admin/submissions/{sid}", response_class=HTMLResponse)
     def admin_submission(request: Request, sid: int):
-        c = conn()
+        c = conn(request)
         need_admin(request, c)
         sub = db.one(c, """SELECT s.*, u.username, p.slug, p.name, cp.label, c.code AS contest_code
                            FROM submissions s JOIN users u ON u.id=s.user_id
@@ -664,7 +743,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.post("/admin/rejudge")
     async def admin_rejudge(request: Request):
-        c = conn()
+        c = conn(request)
         need_admin(request, c)
         form = await request.form()
         if form.get("id"):
@@ -686,7 +765,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
     # users
     @app.get("/admin/users", response_class=HTMLResponse)
     def admin_users(request: Request):
-        c = conn()
+        c = conn(request)
         need_admin(request, c)
         batch = request.session.get("batch")
         return render(request, "admin/users.html", c, batch=batch,
@@ -696,7 +775,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
     @app.post("/admin/users/import")
     def admin_users_import(request: Request, rows: str = Form(...), admin: str = Form("")):
         """Lines of ``username, name, division[, password]``; missing passwords are generated."""
-        c = conn()
+        c = conn(request)
         need_admin(request, c)
         created, skipped = [], []
         for rec in csv.reader(io.StringIO(rows)):
@@ -721,7 +800,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
     @app.post("/admin/users/{uid}")
     def admin_user_action(request: Request, uid: int, action: str = Form(...),
                           division: str = Form(""), display_name: str = Form("")):
-        c = conn()
+        c = conn(request)
         me = need_admin(request, c)
         target = db.one(c, "SELECT * FROM users WHERE id=?", (uid,))
         if target is None:
@@ -752,14 +831,14 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.post("/admin/forget-passwords")
     def admin_forget(request: Request):
-        c = conn()
+        c = conn(request)
         need_admin(request, c)
         app.state.batches.pop(request.session.pop("batch", "") or "", None)
         raise Redirect("/admin/users")
 
     @app.get("/admin/slips/{batch}", response_class=HTMLResponse)
     def admin_slips(request: Request, batch: str):
-        c = conn()
+        c = conn(request)
         need_admin(request, c)
         urls, _ = contestant_urls(c)
         return render(request, "admin/slips.html", c, people=app.state.batches.get(batch, []),
@@ -769,7 +848,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
     # clarifications
     @app.get("/admin/contests/{code}/clarifications", response_class=HTMLResponse)
     def admin_clars(request: Request, code: str):
-        c = conn()
+        c = conn(request)
         u = need_admin(request, c)
         contest = contest_by_code(c, code, u)
         items = db.all_(c, """
@@ -784,7 +863,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
     @app.post("/admin/contests/{code}/clarifications")
     def admin_clar_answer(request: Request, code: str, answer: str = Form(...), cid: int = Form(0),
                           public: str = Form("")):
-        c = conn()
+        c = conn(request)
         u = need_admin(request, c)
         contest = contest_by_code(c, code, u)
         if cid:
