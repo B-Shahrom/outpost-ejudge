@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Balloons · {{ contest.name }}{% endblock %}
+{% block head %}<meta http-equiv="refresh" content="15">{% endblock %}
+{% block content %}
+<div class="row"><h1>Balloons — {{ contest.name }}</h1><span class="spacer"></span><a class="btn" href="/admin/contests/{{ contest.code }}">Back to contest</a></div>
+<p class="row small">
+  {% for label, (name, hex) in colours %}<span class="balloon-key"><span class="swatch" style="background:{{ hex }}"></span>{{ label }} {{ name }}</span>{% endfor %}
+</p>
+<div class="row" style="margin-bottom:10px">
+  <a class="btn {{ 'primary' if show == 'todo' }}" href="?show=todo">To deliver ({{ todo }})</a>
+  <a class="btn {{ 'primary' if show != 'todo' }}" href="?show=all">All ({{ total }})</a>
+  <span class="small muted">Refreshes every 15 s. Oldest first. ★ = first to solve the problem.</span>
+</div>
+<div class="panel table-wrap">
+  {% if items %}
+  <table>
+    <tr><th>Balloon</th><th>For</th><th>Seat</th><th class="num">Minute</th><th></th></tr>
+    {% for i in items %}
+    <tr>
+      <td><span class="swatch" style="background:{{ i.colour[1] }}"></span> <b>{{ i.p.label }}</b> {{ i.colour[0] }}{% if i.first %} ★{% endif %}</td>
+      <td>{{ i.row.name }}{% if i.row.team %}<span class="small muted"> · {{ i.row.members|join(', ') }}</span>{% endif %}</td>
+      <td class="mono">{{ i.row.seats|join(', ') or '—' }}</td>
+      <td class="num">{{ i.minute }}</td>
+      <td><form method="post"><input type="hidden" name="key" value="{{ i.row.key }}"><input type="hidden" name="problem_id" value="{{ i.p.id }}"><input type="hidden" name="show" value="{{ show }}">
+        {% if i.delivered %}<span class="pill ok">delivered {{ i.delivered|clock }}</span> <button class="link" name="undo" value="1">undo</button>{% else %}<button class="primary" type="submit">Delivered</button>{% endif %}</form></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="muted">{{ 'Nothing to deliver right now.' if show == 'todo' else 'No problem solved yet.' }}</p>{% endif %}
+</div>
+{% endblock %}

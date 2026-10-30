@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS users (
     display_name  TEXT NOT NULL DEFAULT '',
     division      TEXT NOT NULL DEFAULT '',
     team          TEXT NOT NULL DEFAULT '',         -- team contests: one standings row per team
+    seat          TEXT NOT NULL DEFAULT '',         -- where they sit: for balloons and printouts
     is_admin      INTEGER NOT NULL DEFAULT 0,
     session_token TEXT,
     session_ip    TEXT,
@@ -57,6 +58,7 @@ CREATE TABLE IF NOT EXISTS contests (
     public_standings INTEGER NOT NULL DEFAULT 1,
     unfrozen         INTEGER NOT NULL DEFAULT 0,
     team_mode        INTEGER NOT NULL DEFAULT 0,        -- standings by team, not by user
+    allow_print      INTEGER NOT NULL DEFAULT 0,        -- contestants may send code to the printer
     created_at       REAL NOT NULL
 );
 
@@ -94,6 +96,24 @@ CREATE TABLE IF NOT EXISTS submissions (
 CREATE INDEX IF NOT EXISTS submissions_queue ON submissions(status, id);
 CREATE INDEX IF NOT EXISTS submissions_contest ON submissions(contest_id, user_id);
 
+CREATE TABLE IF NOT EXISTS balloons (
+    contest_id   INTEGER NOT NULL REFERENCES contests(id) ON DELETE CASCADE,
+    row_key      TEXT NOT NULL,                      -- standings row: "t:<team>" or "u:<user id>"
+    problem_id   INTEGER NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+    delivered_at REAL NOT NULL,
+    PRIMARY KEY (contest_id, row_key, problem_id)
+);
+
+CREATE TABLE IF NOT EXISTS print_jobs (
+    id         INTEGER PRIMARY KEY,
+    contest_id INTEGER NOT NULL REFERENCES contests(id) ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    filename   TEXT NOT NULL DEFAULT '',
+    content    TEXT NOT NULL,
+    created_at REAL NOT NULL,
+    done_at    REAL
+);
+
 CREATE TABLE IF NOT EXISTS app_settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -129,6 +149,8 @@ MIGRATIONS = [
     ("submissions", "lease_until", "REAL"),
     ("users", "team", "TEXT NOT NULL DEFAULT ''"),
     ("contests", "team_mode", "INTEGER NOT NULL DEFAULT 0"),
+    ("users", "seat", "TEXT NOT NULL DEFAULT ''"),
+    ("contests", "allow_print", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 

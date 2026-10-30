@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Printout #{{ job.id }}</title>
+<style>
+  body { font: 11pt/1.35 ui-monospace, Menlo, Consolas, monospace; margin: 16px; color: #000; background: #fff; }
+  header { border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 10px; font-family: system-ui, sans-serif; }
+  header b { font-size: 14pt; }
+  pre { white-space: pre-wrap; word-break: break-all; margin: 0; }
+  button { font: inherit; margin-bottom: 10px; }
+  @media print { button { display: none; } }
+</style></head>
+<body>
+<button onclick="window.print()">Print</button>
+<header><b>{{ job.display_name or job.username }}</b>{% if job.team %} · team {{ job.team }}{% endif %} · seat <b>{{ job.seat or '?' }}</b><br>
+  {{ job.contest_name }} · {{ job.filename or 'pasted text' }} · {{ job.created_at|datetime }} · #{{ job.id }}</header>
+<pre>{{ job.content }}</pre>
+</body></html>

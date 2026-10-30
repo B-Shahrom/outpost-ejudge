@@ -8,6 +8,8 @@
   <a class="btn" href="/admin/submissions?contest={{ contest.code }}">Submissions</a>
   <a class="btn" href="/c/{{ contest.code }}/print">Print statements</a>
   <a class="btn" href="/admin/contests/{{ contest.code }}/analysis">Analysis</a>
+  <a class="btn" href="/admin/contests/{{ contest.code }}/balloons">Balloons</a>
+  {% if contest.allow_print %}<a class="btn" href="/admin/contests/{{ contest.code }}/prints">Print requests</a>{% endif %}
 </div>
 <div class="panel">
   <h3 style="margin-top:0">Problems</h3>

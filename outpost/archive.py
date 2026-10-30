@@ -35,8 +35,8 @@ VERSION = 1
 PROBLEM_FIELDS = ("slug", "name", "time_limit_ms", "memory_limit_mb", "interactive", "checker",
                   "tests_json", "groups_json", "statements_json", "status", "import_log", "main_max_ms")
 CONTEST_FIELDS = ("code", "name", "start_at", "end_at", "scoring", "penalty_minutes", "freeze_minutes",
-                  "divisions_json", "visible", "public_standings", "unfrozen", "team_mode")
-FIELD_DEFAULTS = {"team_mode": 0, "team": ""}  # fields older archives don't have
+                  "divisions_json", "visible", "public_standings", "unfrozen", "team_mode", "allow_print")
+FIELD_DEFAULTS = {"team_mode": 0, "allow_print": 0}  # fields older archives don't have
 SUBMISSION_FIELDS = ("language", "source", "submitted_at", "status", "verdict", "score", "max_score",
                      "time_ms", "memory_kb", "failed_test", "compile_output", "test_results_json",
                      "group_results_json", "judged_at")
@@ -73,7 +73,7 @@ def export_contest(conn: sqlite3.Connection, settings: Settings, code: str, out:
             if s["username"] not in people:
                 people[s["username"]] = db.one(conn, "SELECT * FROM users WHERE username=?", (s["username"],))
         data["users"] = [{k: u[k] for k in ("username", "password_hash", "display_name", "division",
-                                            "is_admin", "team")} for u in people.values()]
+                                            "is_admin", "team", "seat")} for u in people.values()]
         data["submissions"] = [{**{k: s[k] for k in SUBMISSION_FIELDS}, "username": s["username"],
                                 "slug": s["slug"]} for s in subs]
         clars = db.all_(conn, """SELECT cl.*, u.username, p.slug FROM clarifications cl
@@ -167,9 +167,10 @@ def _import_rows(conn, settings, work: Path, data: dict, code: str, copied: list
             user_ids[u["username"]] = row["id"]
             continue
         user_ids[u["username"]] = conn.execute(
-            "INSERT INTO users (username, password_hash, display_name, division, is_admin, team, created_at) "
-            "VALUES (?,?,?,?,?,?,?)", (u["username"], u["password_hash"], u["display_name"], u["division"],
-                                       u["is_admin"], u.get("team", ""), db.now())).lastrowid
+            "INSERT INTO users (username, password_hash, display_name, division, is_admin, team, seat, "
+            "created_at) VALUES (?,?,?,?,?,?,?,?)",
+            (u["username"], u["password_hash"], u["display_name"], u["division"], u["is_admin"],
+             u.get("team", ""), u.get("seat", ""), db.now())).lastrowid
         created += 1
     for s in data.get("submissions", []):
         cols = list(SUBMISSION_FIELDS)

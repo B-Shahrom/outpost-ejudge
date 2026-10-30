@@ -60,9 +60,9 @@ def session_user(conn: sqlite3.Connection, session: dict) -> sqlite3.Row | None:
 
 
 def create_user(conn: sqlite3.Connection, username: str, password: str, *, display_name: str = "",
-                division: str = "", is_admin: bool = False, team: str = "") -> int:
+                division: str = "", is_admin: bool = False, team: str = "", seat: str = "") -> int:
     return conn.execute(
-        "INSERT INTO users (username, password_hash, display_name, division, is_admin, team, created_at) "
-        "VALUES (?,?,?,?,?,?,?)",
-        (username, hash_password(password), display_name, division, int(is_admin), team, db.now()),
+        "INSERT INTO users (username, password_hash, display_name, division, is_admin, team, seat, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        (username, hash_password(password), display_name, division, int(is_admin), team, seat, db.now()),
     ).lastrowid

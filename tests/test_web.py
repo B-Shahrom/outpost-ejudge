@@ -317,3 +317,44 @@ def test_team_contest(app, settings, problems):
     assert "Team submissions" in two.get("/c/teams1/submissions").text
     board = solo.get("/c/teams1/standings").text
     assert "Rockets" in board and "Team Mate 1, Team Mate 2" in board and "Solo Two" in board
+
+
+def test_balloons_and_print_requests(app, settings, problems):
+    admin = client(app, "jury", "jurypass")
+    start = datetime.fromtimestamp(time.time() - 600).strftime("%Y-%m-%dT%H:%M")
+    admin.post("/admin/contests", data={"code": "onsite", "name": "Onsite", "start": start, "duration": 120,
+                                        "scoring": "icpc", "penalty": 20, "freeze": 0, "divisions": "Onsite",
+                                        "visible": "1", "public_standings": "1", "team_mode": "1"})
+    add_problem(admin, "onsite", problems["a-plus-b"])
+    make_users(admin, "on1, On One, Onsite, pw, Comets, A-12\non2, On Two, Onsite, pw, Comets, A-13\n"
+                      "on3, On Three, Onsite, pw, , B-01")
+    one, two, three = client(app, "on1", "pw"), client(app, "on2", "pw"), client(app, "on3", "pw")
+    for cl in (one, two, three):   # two Comets solve A: still one balloon for the team
+        cl.post("/c/onsite/submit", data={"label": "A", "language": "cpp", "source": AB})
+    worker.drain(settings)
+    page = admin.get("/admin/contests/onsite/balloons").text
+    assert "To deliver (2)" in page and "Comets" in page and "A-12, A-13" in page and "B-01" in page
+    assert "A</b> red" in page and "★" in page
+    c = db.connect(settings.db_path)
+    pid = problems["a-plus-b"]
+    admin.post("/admin/contests/onsite/balloons", data={"key": "t:Comets", "problem_id": pid})
+    assert "To deliver (1)" in admin.get("/admin/contests/onsite/balloons").text
+    admin.post("/admin/contests/onsite/balloons", data={"key": "t:Comets", "problem_id": pid, "undo": "1"})
+    assert "To deliver (2)" in admin.get("/admin/contests/onsite/balloons").text
+
+    # Printing is off until the admin allows it.
+    assert one.get("/c/onsite/printer").status_code == 404
+    cid = db.one(c, "SELECT id FROM contests WHERE code='onsite'")["id"]
+    c.execute("UPDATE contests SET allow_print=1 WHERE id=?", (cid,))
+    assert ">Print<" in one.get("/c/onsite/standings").text
+    one.post("/c/onsite/printer", data={"text": "int main() { return 0; }  // please print"})
+    r = one.post("/c/onsite/printer", data={"text": "again"})   # cooldown
+    assert db.one(c, "SELECT COUNT(*) AS n FROM print_jobs WHERE contest_id=?", (cid,))["n"] == 1
+    queue = admin.get("/admin/contests/onsite/prints").text
+    assert "On One" in queue and "A-12" in queue and "Comets" in queue
+    jid = db.one(c, "SELECT id FROM print_jobs WHERE contest_id=?", (cid,))["id"]
+    job = admin.get(f"/admin/print-jobs/{jid}").text
+    assert "please print" in job and "seat <b>A-12</b>" in job
+    admin.post(f"/admin/print-jobs/{jid}/done")
+    assert "printed" in one.get("/c/onsite/printer").text
+    assert two.get(f"/admin/print-jobs/{jid}").status_code == 403

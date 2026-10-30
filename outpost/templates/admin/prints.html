@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Print requests · {{ contest.name }}{% endblock %}
+{% block head %}<meta http-equiv="refresh" content="15">{% endblock %}
+{% block content %}
+<div class="row"><h1>Print requests — {{ contest.name }}</h1><span class="spacer"></span><a class="btn" href="/admin/contests/{{ contest.code }}">Back to contest</a></div>
+<div class="panel table-wrap">
+  {% if jobs %}
+  <table>
+    <tr><th>#</th><th>Time</th><th>From</th><th>Seat</th><th>What</th><th></th></tr>
+    {% for j in jobs %}
+    <tr>
+      <td>{{ j.id }}</td><td>{{ j.created_at|clock }}</td>
+      <td>{{ j.display_name or j.username }}{% if j.team %} <span class="small muted">· {{ j.team }}</span>{% endif %}</td>
+      <td class="mono">{{ j.seat or '—' }}</td>
+      <td class="small">{{ j.filename or 'pasted text' }} · {{ (j.size / 1024)|round(1) }} KB</td>
+      <td class="row"><a class="btn {{ '' if j.done_at else 'primary' }}" href="/admin/print-jobs/{{ j.id }}" target="_blank">Print</a>
+        <form method="post" action="/admin/print-jobs/{{ j.id }}/done">{% if j.done_at %}<span class="pill ok">done</span> <button class="link" name="undo" value="1">undo</button>{% else %}<button type="submit">Mark done</button>{% endif %}</form></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="muted">No print requests.</p>{% endif %}
+</div>
+{% endblock %}

@@ -155,7 +155,13 @@ Later:
   doesn't hide itself. Linked solutions are grouped (n identical solutions
   are one row, not n²/2 pairs), with side-by-side comparisons. The heat map
   shows, per test, how many contestants failed it and with which verdicts.
-- [ ] Balloons and print requests for in-person ICPC-style events.
+- [x] **Balloons and print requests** (done). *Balloons*: every first solve
+  of a problem by a team or contestant, oldest first, with the problem's
+  colour (A red, B blue, …; named, not only shown), the seat(s), and a star
+  for the first solve overall. Runners tick them off as delivered. *Print
+  requests* (opt-in per contest): contestants send a file or text from the
+  *Print* page, and the jury's queue opens each job as a printout headed with
+  name, team and seat. Users have a seat (6th import column).
 - [x] **Teams** (done): users get a team name (5th column of the import,
   or the Users page), and a contest gets a *Team contest* switch. Then
   standings have one row per team (members listed), every member's runs

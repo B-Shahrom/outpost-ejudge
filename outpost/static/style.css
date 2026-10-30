@@ -151,3 +151,7 @@ body.resolver-page #resolver { cursor: pointer; }
 .compare .diff_add { background: var(--ok-bg); }
 .compare .diff_chg { background: var(--warn-bg); }
 .compare .diff_sub { background: var(--bad-bg); }
+
+/* balloons */
+.swatch { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 1px solid #0003; vertical-align: -2px; }
+.balloon-key { display: inline-flex; gap: 5px; align-items: center; margin-right: 10px; }

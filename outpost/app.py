@@ -43,6 +43,13 @@ VERDICT_LABELS = {
     "judge_error": "Judge error", "skipped": "Skipped",
 }
 SCORING_LABELS = {"icpc": "ICPC", "ioi": "IOI", "ioi_penalty": "IOI with penalty"}
+# Balloon colours by problem order: A is red, B blue, ... (named for the runners).
+BALLOONS = [("red", "#e53935"), ("blue", "#1e63d6"), ("green", "#2e9d42"), ("yellow", "#f2c200"),
+            ("orange", "#f57c00"), ("purple", "#8e24aa"), ("pink", "#ec407a"), ("white", "#ffffff"),
+            ("black", "#222222"), ("brown", "#795548"), ("cyan", "#00acc1"), ("silver", "#b0bec5"),
+            ("gold", "#c9a227"), ("lime", "#9ccc65")]
+PRINT_MAX_BYTES = 100 * 1024
+PRINT_COOLDOWN_SECONDS = 30
 
 
 class Redirect(Exception):
@@ -645,6 +652,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
             "visible": int(bool(form.get("visible"))),
             "public_standings": int(bool(form.get("public_standings"))),
             "team_mode": int(bool(form.get("team_mode"))),
+            "allow_print": int(bool(form.get("allow_print"))),
         }
 
     @app.post("/admin/contests")
@@ -810,6 +818,115 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
             f"#{a} {rows[0]['username']}", f"#{b} {rows[1]['username']}")
         return render(request, "admin/compare.html", c, rows=rows, table=table)
 
+    # balloons
+    @app.get("/admin/contests/{code}/balloons", response_class=HTMLResponse)
+    def admin_balloons(request: Request, code: str, show: str = "todo"):
+        """Every first solve of a problem by a team or contestant: a balloon to deliver."""
+        c = conn(request)
+        u = need_admin(request, c)
+        contest = contest_by_code(c, code, u)
+        board = scoring.standings(c, contest, live=True)
+        done = {(r["row_key"], r["problem_id"]): r["delivered_at"] for r in db.all_(
+            c, "SELECT * FROM balloons WHERE contest_id=?", (contest["id"],))}
+        colours = {p["id"]: BALLOONS[n % len(BALLOONS)] for n, p in enumerate(board["problems"])}
+        items = []
+        for row in board["rows"]:
+            for p in board["problems"]:
+                cell = row.cells.get(p["id"])
+                if cell and cell.solved:
+                    items.append({"row": row, "p": p, "minute": cell.minute, "first": cell.first,
+                                  "colour": colours[p["id"]], "delivered": done.get((row.key, p["id"]))})
+        items.sort(key=lambda i: (i["minute"] or 0, i["p"]["label"]))
+        todo = [i for i in items if not i["delivered"]]
+        return render(request, "admin/balloons.html", c, contest=contest, admin_page=True,
+                      items=todo if show == "todo" else items, todo=len(todo), total=len(items), show=show,
+                      colours=[(p["label"], colours[p["id"]]) for p in board["problems"]])
+
+    @app.post("/admin/contests/{code}/balloons")
+    def admin_balloon_mark(request: Request, code: str, key: str = Form(...), problem_id: int = Form(...),
+                           undo: str = Form(""), show: str = Form("todo")):
+        c = conn(request)
+        u = need_admin(request, c)
+        contest = contest_by_code(c, code, u)
+        if undo:
+            c.execute("DELETE FROM balloons WHERE contest_id=? AND row_key=? AND problem_id=?",
+                      (contest["id"], key, problem_id))
+        else:
+            c.execute("INSERT OR IGNORE INTO balloons VALUES (?,?,?,?)", (contest["id"], key, problem_id, time.time()))
+        raise Redirect(f"/admin/contests/{code}/balloons?show={show}")
+
+    # print requests
+    @app.get("/c/{code}/printer", response_class=HTMLResponse)
+    def printer_page(request: Request, code: str):
+        c = conn(request)
+        u = need_user(request, c)
+        contest = contest_by_code(c, code, u)
+        if not contest["allow_print"]:
+            raise HTTPException(404)
+        jobs = db.all_(c, "SELECT id, filename, created_at, done_at, length(content) AS size FROM print_jobs "
+                          "WHERE contest_id=? AND user_id=? ORDER BY id DESC", (contest["id"], u["id"]))
+        return render(request, "printer.html", c, contest=contest, jobs=jobs)
+
+    @app.post("/c/{code}/printer")
+    async def printer_send(request: Request, code: str, text: str = Form(""), file: UploadFile | None = File(None)):
+        c = conn(request)
+        u = need_user(request, c)
+        contest = contest_by_code(c, code, u)
+        if not contest["allow_print"]:
+            raise HTTPException(404)
+        name = ""
+        if file is not None and file.filename:
+            text = (await file.read(PRINT_MAX_BYTES + 1)).decode("utf-8", "replace")
+            name = file.filename
+        back = f"/c/{code}/printer"
+        if not text.strip():
+            flash(request, "Nothing to print.")
+            raise Redirect(back)
+        if len(text.encode()) > PRINT_MAX_BYTES:
+            flash(request, f"That is over {PRINT_MAX_BYTES // 1024} KB.")
+            raise Redirect(back)
+        last = db.one(c, "SELECT MAX(created_at) AS t FROM print_jobs WHERE user_id=?", (u["id"],))["t"]
+        if last and time.time() - last < PRINT_COOLDOWN_SECONDS:
+            flash(request, f"Wait {PRINT_COOLDOWN_SECONDS} seconds between printouts.")
+            raise Redirect(back)
+        c.execute("INSERT INTO print_jobs (contest_id, user_id, filename, content, created_at) VALUES (?,?,?,?,?)",
+                  (contest["id"], u["id"], name[:120], text, time.time()))
+        flash(request, "Sent to the printer: the jury will bring it to you.")
+        raise Redirect(back)
+
+    @app.get("/admin/contests/{code}/prints", response_class=HTMLResponse)
+    def admin_prints(request: Request, code: str):
+        c = conn(request)
+        u = need_admin(request, c)
+        contest = contest_by_code(c, code, u)
+        jobs = db.all_(c, """SELECT j.id, j.filename, j.created_at, j.done_at, length(j.content) AS size,
+                                     u.username, u.display_name, u.team, u.seat
+                              FROM print_jobs j JOIN users u ON u.id=j.user_id WHERE j.contest_id=?
+                              ORDER BY (j.done_at IS NOT NULL), j.id""", (contest["id"],))
+        return render(request, "admin/prints.html", c, contest=contest, admin_page=True, jobs=jobs)
+
+    @app.get("/admin/print-jobs/{jid}", response_class=HTMLResponse)
+    def admin_print_job(request: Request, jid: int):
+        c = conn(request)
+        need_admin(request, c)
+        job = db.one(c, """SELECT j.*, u.username, u.display_name, u.team, u.seat, c.code, c.name AS contest_name
+                             FROM print_jobs j JOIN users u ON u.id=j.user_id JOIN contests c ON c.id=j.contest_id
+                             WHERE j.id=?""", (jid,))
+        if job is None:
+            raise HTTPException(404)
+        return render(request, "admin/print_job.html", c, job=job)
+
+    @app.post("/admin/print-jobs/{jid}/done")
+    def admin_print_done(request: Request, jid: int, undo: str = Form("")):
+        c = conn(request)
+        need_admin(request, c)
+        job = db.one(c, "SELECT j.*, c.code FROM print_jobs j JOIN contests c ON c.id=j.contest_id WHERE j.id=?",
+                     (jid,))
+        if job is None:
+            raise HTTPException(404)
+        c.execute("UPDATE print_jobs SET done_at=? WHERE id=?", (None if undo else time.time(), jid))
+        raise Redirect(f"/admin/contests/{job['code']}/prints")
+
     @app.get("/admin/contests/{code}/standings.csv")
     def admin_standings_csv(request: Request, code: str):
         c = conn(request)
@@ -968,11 +1085,12 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
             division = rec[2] if len(rec) > 2 else ""
             password = rec[3] if len(rec) > 3 and rec[3] else auth.generate_password()
             team = rec[4] if len(rec) > 4 else ""
+            seat = rec[5] if len(rec) > 5 else ""
             if db.one(c, "SELECT 1 FROM users WHERE username=?", (username,)):
                 skipped.append(username)
                 continue
             auth.create_user(c, username, password, display_name=name, division=division,
-                             is_admin=bool(admin), team=team)
+                             is_admin=bool(admin), team=team, seat=seat)
             created.append({"username": username, "name": name, "division": division,
                             "password": password, "team": team})
         remember_batch(request, created)
@@ -982,7 +1100,8 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.post("/admin/users/{uid}")
     def admin_user_action(request: Request, uid: int, action: str = Form(...),
-                          division: str = Form(""), display_name: str = Form(""), team: str = Form("")):
+                          division: str = Form(""), display_name: str = Form(""), team: str = Form(""),
+                          seat: str = Form("")):
         c = conn(request)
         me = need_admin(request, c)
         target = db.one(c, "SELECT * FROM users WHERE id=?", (uid,))
@@ -999,8 +1118,8 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
             c.execute("UPDATE users SET session_token=NULL WHERE id=?", (uid,))
             flash(request, f"Signed {target['username']} out.")
         elif action == "edit":
-            c.execute("UPDATE users SET division=?, display_name=?, team=? WHERE id=?",
-                      (division.strip(), display_name.strip(), team.strip(), uid))
+            c.execute("UPDATE users SET division=?, display_name=?, team=?, seat=? WHERE id=?",
+                      (division.strip(), display_name.strip(), team.strip(), seat.strip(), uid))
             flash(request, "Saved.")
         elif action == "delete" and uid != me["id"]:
             c.execute("DELETE FROM users WHERE id=?", (uid,))

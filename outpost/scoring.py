@@ -46,6 +46,8 @@ class Row:
     division: str
     members: list[str] = field(default_factory=list)  # display names (team rows)
     team: bool = False
+    key: str = ""          # "t:<team>" or "u:<user id>"
+    seats: list[str] = field(default_factory=list)
     cells: dict[int, Cell] = field(default_factory=dict)
     solved: int = 0
     score: float = 0.0
@@ -74,7 +76,7 @@ def standings(conn: sqlite3.Connection, contest: sqlite3.Row, *, live: bool,
         JOIN problems p ON p.id = cp.problem_id
         WHERE cp.contest_id=? ORDER BY cp.position""", (contest["id"],))
 
-    users_sql = "SELECT id, username, display_name, division, team FROM users WHERE is_admin=0"
+    users_sql = "SELECT id, username, display_name, division, team, seat FROM users WHERE is_admin=0"
     params: list = []
     if divisions:
         users_sql += f" AND division IN ({','.join('?' * len(divisions))})"
@@ -93,7 +95,10 @@ def standings(conn: sqlite3.Connection, contest: sqlite3.Row, *, live: bool,
         if key not in rows:
             rows[key] = (Row(u["id"], u["team"], u["team"], u["division"], team=True) if key.startswith("t:")
                          else Row(u["id"], u["username"], shown, u["division"]))
+        rows[key].key = key
         rows[key].members.append(shown)
+        if u["seat"]:
+            rows[key].seats.append(u["seat"])
         owner[u["id"]] = key
 
     subs = db.all_(conn, """
