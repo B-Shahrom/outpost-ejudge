@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Questions · {{ contest.name }}{% endblock %}
+{% block content %}
+<div class="row"><h1>Questions — {{ contest.name }}</h1><span class="spacer"></span><a class="btn" href="/admin/contests/{{ contest.code }}">Back to contest</a></div>
+<meta http-equiv="refresh" content="30">
+<div class="panel">
+  <h3 style="margin-top:0">Announce to everyone</h3>
+  <form method="post"><textarea name="answer" rows="2" required></textarea><p><button class="primary" type="submit">Announce</button></p></form>
+</div>
+{% for i in items if i.user_id %}
+<div class="panel">
+  <div class="small muted">{{ i.username }}{% if i.label %} · problem {{ i.label }}{% endif %} · {{ i.created_at|clock }}</div>
+  <p><i>{{ i.question }}</i></p>
+  <form method="post"><input type="hidden" name="cid" value="{{ i.id }}">
+    <div class="row">
+      {% for quick in ['Yes.', 'No.', 'Read the statement.', 'No comment.'] %}<button type="button" onclick="this.form.answer.value='{{ quick }}'">{{ quick }}</button>{% endfor %}
+    </div>
+    <textarea name="answer" rows="2" style="margin-top:6px">{{ i.answer or '' }}</textarea>
+    <p class="row"><button class="primary" type="submit">{{ 'Update answer' if i.answer is not none else 'Answer' }}</button>
+      <label class="inline"><input type="checkbox" name="public" value="1" {{ 'checked' if i.public }}> show to everyone</label></p>
+  </form>
+</div>
+{% endfor %}
+{% endblock %}

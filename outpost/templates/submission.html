@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Submission {{ sub.id }} · Outpost{% endblock %}
+{% block content %}
+{% set icpc = (sub.failed_test is not none and not sub.group_results_json) or (contest and contest.scoring == 'icpc') %}
+<div class="row">
+  <h1>Submission {{ sub.id }}</h1><span class="spacer"></span>
+  {% if admin_view %}
+  <form method="post" action="/admin/rejudge"><input type="hidden" name="id" value="{{ sub.id }}"><input type="hidden" name="back" value="/admin/submissions/{{ sub.id }}"><button type="submit">Rejudge</button></form>
+  {% endif %}
+</div>
+<div class="panel">
+  <table>
+    {% if admin_view %}<tr><th>User</th><td>{{ sub.username }}</td></tr>
+    <tr><th>Contest</th><td>{% if sub.contest_code %}<a href="/admin/contests/{{ sub.contest_code }}">{{ sub.contest_code }}</a>{% else %}—{% endif %}</td></tr>{% endif %}
+    <tr><th>Problem</th><td>{{ sub.label ~ '. ' if sub.label }}{{ sub.name }}</td></tr>
+    <tr><th>Submitted</th><td>{{ sub.submitted_at|datetime }}</td></tr>
+    <tr><th>Language</th><td>{{ LANGS[sub.language].name if sub.language in LANGS else sub.language }}</td></tr>
+    <tr><th>Verdict</th><td>{% if sub.status == 'done' %}<span class="v {{ sub.verdict }}">{{ sub.verdict|verdict }}{% if sub.failed_test and sub.verdict != 'accepted' %} on test {{ sub.failed_test }}{% endif %}</span>{% else %}<span class="v pending">{{ sub.status }}</span>{% endif %}</td></tr>
+    {% if sub.score is not none and sub.max_score %}<tr><th>Score</th><td>{{ sub.score|num }} / {{ sub.max_score|num }}</td></tr>{% endif %}
+    {% if sub.time_ms is not none %}<tr><th>Time / memory</th><td>{{ sub.time_ms }} ms · {{ (sub.memory_kb / 1024)|round|int }} MB</td></tr>{% endif %}
+  </table>
+</div>
+{% if sub.compile_output and (sub.verdict == 'compilation_error' or admin_view) %}
+<h2>{{ 'Judge log' if sub.verdict == 'judge_error' else 'Compiler output' }}</h2>
+<pre>{{ sub.compile_output }}</pre>
+{% endif %}
+{% set groups = sub.group_results_json|fromjson %}
+{% if groups %}
+<h2>Subtasks</h2>
+<div class="panel table-wrap"><table>
+  <tr><th>Group</th><th class="num">Score</th><th>Result</th></tr>
+  {% for g in groups %}<tr><td>{{ g.name }}</td><td class="num">{{ g.score|num }} / {{ g.max|num }}</td>
+    <td>{% if g.blocked_by %}<span class="muted">skipped — needs group {{ g.blocked_by|join(', ') }}</span>{% elif g.passed %}<span class="v accepted">passed</span>{% else %}<span class="v wrong_answer">failed</span>{% endif %}</td></tr>{% endfor %}
+</table></div>
+{% endif %}
+{% set tests = sub.test_results_json|fromjson %}
+{% if tests and (admin_view or not (contest and contest.scoring == 'icpc')) %}
+<h2>Tests</h2>
+<div class="panel table-wrap"><table>
+  <tr><th>Test</th><th>Verdict</th><th class="num">Time</th><th class="num">Memory</th>{% if admin_view %}<th>Checker</th>{% endif %}</tr>
+  {% for t in tests %}<tr><td>{{ t.test }}</td><td><span class="v {{ t.verdict }}">{{ t.verdict|verdict }}</span></td>
+    <td class="num">{% if t.verdict != 'skipped' %}{{ t.time_ms }} ms{% endif %}</td><td class="num">{% if t.verdict != 'skipped' %}{{ (t.memory_kb / 1024)|round|int }} MB{% endif %}</td>
+    {% if admin_view %}<td class="small mono">{{ t.message }}</td>{% endif %}</tr>{% endfor %}
+</table></div>
+{% endif %}
+<h2>Source</h2>
+<pre>{{ sub.source }}</pre>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Questions · {{ contest.name }}{% endblock %}
+{% block content %}
+<h1>Questions &amp; announcements</h1>
+<div class="grid2">
+<div class="panel">
+  {% for i in items %}
+    <div style="padding:8px 0;border-bottom:1px solid var(--line)">
+      <div class="small muted">{% if i.user_id %}{{ 'You' if i.user_id == user.id else 'Question' }}{% if i.label %} · problem {{ i.label }}{% endif %} · {{ i.created_at|clock }}{% else %}Announcement · {{ i.answered_at|clock }}{% endif %}</div>
+      {% if i.question %}<p style="margin:4px 0"><i>{{ i.question }}</i></p>{% endif %}
+      {% if i.answer is not none %}<p style="margin:4px 0"><b>{{ i.answer }}</b></p>{% else %}<p class="muted small" style="margin:4px 0">waiting for an answer</p>{% endif %}
+    </div>
+  {% else %}<p class="muted">Nothing yet.</p>{% endfor %}
+</div>
+<aside class="panel">
+  <h3 style="margin-top:0">Ask the jury</h3>
+  <form method="post" class="stack">
+    <label for="lbl">Problem</label>
+    <select id="lbl" name="label"><option value="">General</option>{% for p in problems %}<option value="{{ p.label }}">{{ p.label }}. {{ p.name }}</option>{% endfor %}</select>
+    <label for="q">Question</label>
+    <textarea id="q" name="question" rows="5" required></textarea>
+    <p><button class="primary" type="submit">Send</button></p>
+  </form>
+</aside>
+</div>
+{% endblock %}

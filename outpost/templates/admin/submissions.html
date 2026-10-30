@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Submissions · Outpost{% endblock %}
+{% block content %}
+<h1>Submissions</h1>
+<form class="panel row" method="get">
+  <select name="contest"><option value="">All contests</option>{% for c in contests %}<option {{ 'selected' if c.code == f.contest }}>{{ c.code }}</option>{% endfor %}</select>
+  <input type="text" name="problem" value="{{ f.problem }}" placeholder="problem short name">
+  <input type="text" name="user" value="{{ f.user }}" placeholder="username">
+  <select name="verdict"><option value="">Any verdict</option><option value="pending" {{ 'selected' if f.verdict == 'pending' }}>pending</option>{% for v in verdicts %}<option value="{{ v }}" {{ 'selected' if v == f.verdict }}>{{ v|verdict }}</option>{% endfor %}</select>
+  <button type="submit">Filter</button>
+  <span class="spacer"></span><span class="muted small">{{ total }} found</span>
+</form>
+<form method="post" action="/admin/rejudge" class="row" style="margin-bottom:12px">
+  {% for k, v in f.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+  <input type="hidden" name="back" value="{{ request.url.path }}?{{ request.url.query }}">
+  <button type="submit" data-confirm="Rejudge all {{ total }} submissions matching this filter?">Rejudge all {{ total }}</button>
+</form>
+<div class="panel table-wrap"><table>
+  <tr><th>#</th><th>Time</th><th>User</th><th>Contest</th><th>Problem</th><th>Lang</th><th>Verdict</th><th class="num">Score</th><th class="num">Time</th><th class="num">Mem</th></tr>
+  {% for s in subs %}<tr>
+    <td><a href="/admin/submissions/{{ s.id }}">{{ s.id }}</a></td><td class="muted">{{ s.submitted_at|clock }}</td>
+    <td>{{ s.username }}</td><td class="small">{{ s.contest_code or '' }}</td><td class="small mono">{{ s.slug }}</td><td class="small">{{ s.language }}</td>
+    <td>{% if s.status == 'done' %}<span class="v {{ s.verdict }}">{{ s.verdict|verdict }}{% if s.failed_test and s.verdict != 'accepted' %} #{{ s.failed_test }}{% endif %}</span>{% else %}<span class="v pending">{{ s.status }}</span>{% endif %}</td>
+    <td class="num">{% if s.score is not none %}{{ s.score|num }}{% endif %}</td><td class="num">{{ s.time_ms if s.time_ms is not none }}</td><td class="num">{% if s.memory_kb is not none %}{{ (s.memory_kb / 1024)|round|int }}{% endif %}</td>
+  </tr>{% endfor %}
+</table></div>
+<p class="row">{% if page > 1 %}<a href="?{{ request.url.query|replace('page=' ~ page, '') }}&page={{ page - 1 }}">← newer</a>{% endif %}<span class="spacer"></span>{% if total > page * 100 %}<a href="?{{ request.url.query|replace('&page=' ~ page, '') }}&page={{ page + 1 }}">older →</a>{% endif %}</p>
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Standings · {{ contest.name }}{% endblock %}
+{% block bodyclass %}{{ 'projector' if projector }}{% endblock %}
+{% block head %}{% if projector %}<meta http-equiv="refresh" content="30">{% endif %}{% endblock %}
+{% block content %}
+<div class="row">
+  <h1>{{ contest.name }}</h1><span class="spacer"></span>
+  {% if board and board.frozen %}<span class="pill warn">frozen — last {{ contest.freeze_minutes }} min hidden</span>{% endif %}
+</div>
+{% if board is none %}
+<div class="panel"><p class="muted">Standings are private for this contest.</p></div>
+{% else %}
+<div class="row no-projector" style="margin:8px 0 12px">
+  {% if board.divisions|length > 1 %}
+    <span class="small">Division:</span>
+    <a class="btn {{ 'primary' if not division }}" href="?">All</a>
+    {% for d in board.divisions %}<a class="btn {{ 'primary' if d == division }}" href="?division={{ d|urlencode }}">{{ d }}</a>{% endfor %}
+  {% endif %}
+  <span class="spacer"></span>
+  <a class="small" href="?projector=1{% if division %}&division={{ division|urlencode }}{% endif %}">Projector view</a>
+</div>
+<div class="panel table-wrap">
+<table class="board">
+  <tr><th>#</th><th class="name">Name</th>
+    {% for p in board.problems %}<th title="{{ p.name }}">{{ p.label }}</th>{% endfor %}
+    <th>{{ 'Solved' if board.scoring == 'icpc' else 'Score' }}</th>{% if board.scoring != 'ioi' %}<th>Penalty</th>{% endif %}</tr>
+  {% for r in board.rows %}
+  <tr>
+    <td>{{ r.rank }}</td>
+    <td class="name">{{ r.name }}{% if r.division and board.divisions|length > 1 %} <span class="muted small">{{ r.division }}</span>{% endif %}</td>
+    {% for p in board.problems %}{% set c = r.cells.get(p.id) %}
+      {% if not c %}<td></td>
+      {% elif board.scoring == 'icpc' %}
+        {% if c.solved %}<td class="{{ 'cell-first' if c.first else 'cell-ok' }}">+{{ c.tries if c.tries }}<span class="t">{{ c.minute }}</span></td>
+        {% elif c.pending %}<td class="cell-pending">?{% if c.tries %}<span class="t">−{{ c.tries }} +{{ c.pending }}</span>{% endif %}</td>
+        {% elif c.tries %}<td class="cell-bad">−{{ c.tries }}</td>{% else %}<td></td>{% endif %}
+      {% else %}
+        {% if c.score is not none %}<td class="{{ 'cell-ok' if c.solved else ('cell-bad' if not c.score else '') }}">{{ c.score|num }}{% if c.pending %}<span class="t">?</span>{% endif %}</td>
+        {% elif c.pending %}<td class="cell-pending">?</td>{% else %}<td></td>{% endif %}
+      {% endif %}
+    {% endfor %}
+    <td><b>{{ r.solved if board.scoring == 'icpc' else r.score|num }}</b></td>
+    {% if board.scoring != 'ioi' %}<td>{{ r.penalty }}</td>{% endif %}
+  </tr>
+  {% endfor %}
+</table>
+</div>
+{% endif %}
+{% endblock %}

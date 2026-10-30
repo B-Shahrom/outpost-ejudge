@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Outpost{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+{% block head %}{% endblock %}
+</head>
+<body class="{% block bodyclass %}{% endblock %}">
+<header class="top"><div class="inner">
+  <a class="brand" href="/">Out<span>post</span></a>
+  <nav class="main">
+  {% block nav %}
+    {% if contest and user and not admin_page %}
+      {% set here = request.url.path %}
+      <a href="/c/{{ contest.code }}" class="{{ 'on' if here == '/c/' ~ contest.code or '/p/' in here }}">Problems</a>
+      <a href="/c/{{ contest.code }}/submissions" class="{{ 'on' if 'submissions' in here }}">My submissions</a>
+      <a href="/c/{{ contest.code }}/standings" class="{{ 'on' if 'standings' in here }}">Standings</a>
+      <a href="/c/{{ contest.code }}/clarifications" class="{{ 'on' if 'clarifications' in here }}">Questions
+        <span class="pill warn" data-news="/api/c/{{ contest.code }}/news" hidden>new</span></a>
+      {% if user.is_admin %}<a href="/admin/contests/{{ contest.code }}">Manage</a>{% endif %}
+    {% elif user and user.is_admin %}
+      {% set here = request.url.path %}
+      <a href="/admin" class="{{ 'on' if here == '/admin' }}">Dashboard</a>
+      <a href="/admin/problems" class="{{ 'on' if 'problems' in here }}">Problems</a>
+      <a href="/admin/contests" class="{{ 'on' if 'contests' in here }}">Contests</a>
+      <a href="/admin/users" class="{{ 'on' if 'users' in here or 'slips' in here }}">Users</a>
+      <a href="/admin/submissions" class="{{ 'on' if 'submissions' in here }}">Submissions</a>
+    {% endif %}
+  {% endblock %}
+  </nav>
+  {% if contest %}<span class="timer" data-timer data-now="{{ now }}" data-start="{{ contest.start_at }}" data-end="{{ contest.end_at }}"{% if now < contest.start_at %} data-reload-at-start="1"{% endif %}>&nbsp;</span>{% endif %}
+  {% if user %}
+  <div class="who">
+    <span>{{ user.display_name or user.username }}{% if user.division %} <span class="muted">· {{ user.division }}</span>{% endif %}</span>
+    {% if user.is_admin and contest %}<a href="/admin">Admin</a>{% endif %}
+    <form method="post" action="/logout"><button class="link" type="submit">Sign out</button></form>
+  </div>
+  {% endif %}
+</div></header>
+<main>
+{% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+{% block content %}{% endblock %}
+</main>
+{% block scripts %}{% endblock %}{# before app.js: deferred scripts run in order, and app.js renders the math #}
+<script src="/static/app.js" defer></script>
+</body>
+</html>

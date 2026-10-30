@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ contest.name }} · Outpost{% endblock %}
+{% block content %}
+<h1>{{ contest.name }}</h1>
+<p class="muted">{{ contest.start_at|datetime }} – {{ contest.end_at|clock }} · {{ SCORING[contest.scoring] }}{% if contest.scoring != 'ioi' %} · {{ contest.penalty_minutes }} min penalty{% endif %}</p>
+<div class="grid2">
+<div class="panel">
+{% if now < contest.start_at and not user.is_admin %}
+  <p>The contest hasn't started yet. Problems appear here when it does — the page reloads itself.</p>
+{% else %}
+<div class="table-wrap"><table>
+  <tr><th style="width:40px"></th><th>Problem</th><th class="num">Limits</th><th class="c">You</th></tr>
+  {% for p in problems %}
+  {% set st = mine.get(p.id) %}
+  <tr>
+    <td><b>{{ p.label }}</b></td>
+    <td><a href="/c/{{ contest.code }}/p/{{ p.label }}">{{ p.name }}</a>{% if p.interactive %} <span class="pill">interactive</span>{% endif %}</td>
+    <td class="num muted small">{{ p.time_limit_ms / 1000 }} s · {{ p.memory_limit_mb }} MB</td>
+    <td class="c">
+      {% if st %}
+        {% if contest.scoring == 'icpc' %}
+          {% if st.solved %}<span class="pill ok">solved</span>{% elif st.pending %}<span class="pill warn">judging</span>{% else %}<span class="pill bad">−{{ st.tries }}</span>{% endif %}
+        {% else %}
+          {% if st.best is not none %}<span class="pill {{ 'ok' if st.solved else ('bad' if not st.best else 'warn') }}">{{ st.best|num }} / {{ st.max|num }}</span>{% elif st.pending %}<span class="pill warn">judging</span>{% endif %}
+        {% endif %}
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table></div>
+{% endif %}
+</div>
+<div>
+  <div class="panel">
+    <h3 style="margin-top:0">Announcements</h3>
+    {% for n in news %}
+      <p><span class="muted small">{{ n.answered_at|clock }}</span><br>{% if n.question %}<i>{{ n.question }}</i><br>{% endif %}{{ n.answer }}</p>
+    {% else %}
+      <p class="muted small">None yet.</p>
+    {% endfor %}
+    <p class="small"><a href="/c/{{ contest.code }}/clarifications">Ask a question →</a></p>
+  </div>
+</div>
+</div>
+{% endblock %}

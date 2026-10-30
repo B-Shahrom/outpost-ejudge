@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "outpost-ejudge"
+version = "0.1.0"
+description = "Offline ejudge for programming contests: one laptop judges, contestants join its Wi-Fi."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn>=0.29",
+  "jinja2>=3.1",
+  "python-multipart>=0.0.9",
+  "itsdangerous>=2.1",
+  "segno>=1.6",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[project.scripts]
+outpost = "outpost.__main__:main"
+
+[tool.setuptools]
+packages = ["outpost"]
+
+[tool.setuptools.package-data]
+outpost = ["templates/*.html", "templates/admin/*.html", "static/*", "static/vendor/katex/*", "static/vendor/katex/fonts/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

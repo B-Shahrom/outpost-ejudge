@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{{ prob.slug }} · Outpost{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/vendor/katex/katex.min.css">{% endblock %}
+{% block content %}
+<div class="row"><h1>{{ prob.name }}</h1><span class="muted mono">{{ prob.slug }}</span><span class="spacer"></span>
+  <form method="post" action="/admin/problems/{{ prob.id }}/delete"><button class="danger" type="submit" data-confirm="Delete {{ prob.slug }} and every submission to it?">Delete</button></form></div>
+<div class="grid2">
+<div>
+  <div class="panel statement">
+    {% if langs|length > 1 %}<p class="small">{% for l in langs %}{% if l == lang %}<b>{{ l }}</b>{% else %}<a href="?lang={{ l }}">{{ l }}</a>{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
+    {% if st %}
+      {{ st.legend|safe }}
+      {% if st.input %}<h3>Input</h3>{{ st.input|safe }}{% endif %}
+      {% if st.output %}<h3>Output</h3>{{ st.output|safe }}{% endif %}
+      {% if st.interaction %}<h3>Interaction</h3>{{ st.interaction|safe }}{% endif %}
+      {% if st.scoring %}<h3>Scoring</h3>{{ st.scoring|safe }}{% endif %}
+      {% for s in st.samples %}<div class="samples"><pre>{{ s.input }}</pre><pre>{{ s.output }}</pre></div>{% endfor %}
+      {% if st.notes %}<h3>Note</h3>{{ st.notes|safe }}{% endif %}
+    {% else %}<p class="muted">No statement in the package.</p>{% endif %}
+  </div>
+  <h2>Import log</h2>
+  <pre class="small">{{ prob.import_log }}</pre>
+</div>
+<aside>
+  <div class="panel">
+    <h3 style="margin-top:0">Limits</h3>
+    <form method="post" action="/admin/problems/{{ prob.id }}/limits" class="stack">
+      <label for="tl">Time limit, ms</label><input id="tl" type="number" name="time_limit_ms" value="{{ prob.time_limit_ms }}" min="100">
+      <label for="ml">Memory limit, MB</label><input id="ml" type="number" name="memory_limit_mb" value="{{ prob.memory_limit_mb }}" min="16">
+      <p><button type="submit">Save</button></p>
+    </form>
+    <p class="small muted">{% if prob.main_max_ms is not none %}Main solution's slowest test here: <b>{{ prob.main_max_ms }} ms</b>.{% endif %} Checker: {{ prob.checker }}.{% if prob.interactive %} Interactive.{% endif %}</p>
+  </div>
+  <div class="panel">
+    <h3 style="margin-top:0">Tests</h3>
+    {% if groups %}
+    <table class="small"><tr><th>Group</th><th class="num">Points</th><th>Policy</th><th>Needs</th><th class="num">Tests</th></tr>
+      {% for g in groups %}<tr><td>{{ g.name }}</td><td class="num">{{ g.points|num }}</td><td>{{ g.policy }}</td><td>{{ g.dependencies|join(', ') }}</td>
+        <td class="num">{{ tests|selectattr('group', 'equalto', g.name)|list|length }}</td></tr>{% endfor %}
+    </table>
+    {% else %}<p class="small">{{ tests|length }} tests, no groups.</p>{% endif %}
+  </div>
+  <div class="panel">
+    <h3 style="margin-top:0">Used in</h3>
+    {% for u in used %}<p class="small"><a href="/admin/contests/{{ u.code }}">{{ u.name }}</a> as {{ u.label }}</p>{% else %}<p class="small muted">No contest yet.</p>{% endfor %}
+  </div>
+</aside>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/vendor/katex/katex.min.js" defer></script>
+<script src="/static/vendor/katex/auto-render.min.js" defer></script>
+{% endblock %}

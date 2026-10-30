@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · Outpost{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+<div class="grid2">
+<div>
+  <div class="cards">
+    <div class="card"><div class="muted small">Judge workers</div><div class="n">{{ workers }}</div></div>
+    <div class="card"><div class="muted small">In queue</div><div class="n">{{ queue }}</div></div>
+    <div class="card"><div class="muted small">Problems</div><div class="n"><a href="/admin/problems">{{ problems }}</a></div></div>
+    <div class="card"><div class="muted small">Contestants</div><div class="n"><a href="/admin/users">{{ users }}</a></div></div>
+  </div>
+  {% if isolated is false %}
+  <div class="flash" style="margin-top:16px">Network isolation is <b>off</b>: this machine can't give runs their own network namespace. Run as root on Linux, or use the Docker setup, before a real contest.</div>
+  {% endif %}
+  <div class="panel" style="margin-top:16px">
+    <h3 style="margin-top:0">Contests</h3>
+    {% if contests %}
+    <table>
+      {% for c in contests %}<tr><td><a href="/admin/contests/{{ c.code }}">{{ c.name }}</a></td><td class="muted">{{ c.start_at|datetime }}</td>
+        <td>{% if now < c.start_at %}<span class="pill">upcoming</span>{% elif now <= c.end_at %}<span class="pill ok">running</span>{% else %}<span class="pill">finished</span>{% endif %}</td>
+        <td><a href="/c/{{ c.code }}/standings">standings</a></td></tr>{% endfor %}
+    </table>
+    {% else %}<p class="muted">None yet — <a href="/admin/problems">import problems</a>, then <a href="/admin/contests">create a contest</a>.</p>{% endif %}
+  </div>
+</div>
+<aside class="panel" style="text-align:center">
+  <h3 style="margin-top:0">Contestants open</h3>
+  {% if urls %}
+    <div class="big-url">{{ urls[0] }}</div>
+    <div class="qr" style="margin:12px 0">{{ qr|safe }}</div>
+    {% if urls|length > 1 %}<p class="small muted">Also: {% for u in urls[1:] %}{{ u }}{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+  {% endif %}
+  <p class="small muted">Everyone joins this machine's Wi-Fi hotspot (or the same network), then opens the address.</p>
+</aside>
+</div>
+{% endblock %}

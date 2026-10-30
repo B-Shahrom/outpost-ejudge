@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Login slips{% endblock %}
+{% block content %}
+<p class="no-print row"><button class="primary" onclick="window.print()">Print</button><span class="muted small">Cut along the dashed lines.</span></p>
+<div class="slips">
+{% for p in people %}
+  <div class="slip">
+    <div>{{ p.name or p.username }}{% if p.division %} · {{ p.division }}{% endif %}</div>
+    <div style="margin-top:6px">Wi-Fi: join the contest hotspot, then open <b>{{ url }}</b></div>
+    <div style="margin-top:6px">Username: <span class="u">{{ p.username }}</span></div>
+    <div>Password: <span class="u">{{ p.password }}</span></div>
+  </div>
+{% else %}<p>Nothing to print — the passwords were already forgotten.</p>{% endfor %}
+</div>
+{% endblock %}

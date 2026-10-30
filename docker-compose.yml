@@ -1,0 +1,17 @@
+# docker compose up -d   then   docker compose exec outpost outpost admin <name>
+#
+# network_mode: host so contestants on the hotspot reach the server directly and
+# the dashboard shows the address they should type. SYS_ADMIN lets each run get
+# its own empty network namespace (no network at all for submissions).
+services:
+  outpost:
+    build: .
+    network_mode: host
+    cap_add: [SYS_ADMIN]
+    security_opt: ["seccomp=unconfined", "apparmor=unconfined"]
+    volumes:
+      - ./outpost-data:/data
+    environment:
+      OUTPOST_PORT: "8000"
+      # OUTPOST_WORKERS: "3"   # default: CPU cores - 1
+    restart: unless-stopped

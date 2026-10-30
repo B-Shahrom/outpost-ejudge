@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}{{ prob.label }}. {{ st.name if st else prob.name }} · Outpost{% endblock %}
+{% block head %}<link rel="stylesheet" href="/static/vendor/katex/katex.min.css">{% endblock %}
+{% block content %}
+<div class="tabs">
+  {% for p in problems %}<a href="/c/{{ contest.code }}/p/{{ p.label }}{% if lang %}?lang={{ lang }}{% endif %}" class="{{ 'on' if p.label == prob.label }}" title="{{ p.name }}">{{ p.label }}</a>{% endfor %}
+</div>
+<div class="grid2">
+<article class="panel statement">
+  <div class="row">
+    <h1>{{ prob.label }}. {{ st.name if st else prob.name }}</h1>
+    <span class="spacer"></span>
+    {% if langs|length > 1 %}
+      <span class="small">{% for l in langs %}{% if l == lang %}<b>{{ l }}</b>{% else %}<a href="?lang={{ l }}">{{ l }}</a>{% endif %}{% if not loop.last %} · {% endif %}{% endfor %}</span>
+    {% endif %}
+  </div>
+  <p class="limits">Time limit {{ prob.time_limit_ms / 1000 }} s · Memory limit {{ prob.memory_limit_mb }} MB{% if prob.interactive %} · interactive{% endif %}{% if st and st.pdf %} · <a href="/problem-files/{{ prob.slug }}/{{ lang }}/problem.pdf" target="_blank">PDF</a>{% endif %}</p>
+  {% if st %}
+    {{ st.legend|safe }}
+    {% if st.input %}<h3>Input</h3>{{ st.input|safe }}{% endif %}
+    {% if st.output %}<h3>Output</h3>{{ st.output|safe }}{% endif %}
+    {% if st.interaction %}<h3>Interaction</h3>{{ st.interaction|safe }}{% endif %}
+    {% if st.scoring %}<h3>Scoring</h3>{{ st.scoring|safe }}{% endif %}
+    {% if st.samples %}
+      <h3>{{ 'Example' if st.samples|length == 1 else 'Examples' }}</h3>
+      {% for s in st.samples %}
+      <div class="samples">
+        <div><div class="sample-head">input <button class="copy" type="button" data-copy="si{{ loop.index }}">copy</button></div><pre id="si{{ loop.index }}">{{ s.input }}</pre></div>
+        <div><div class="sample-head">output <button class="copy" type="button" data-copy="so{{ loop.index }}">copy</button></div><pre id="so{{ loop.index }}">{{ s.output }}</pre></div>
+      </div>
+      {% endfor %}
+    {% endif %}
+    {% if st.notes %}<h3>Note</h3>{{ st.notes|safe }}{% endif %}
+  {% else %}
+    <p class="muted">This problem has no statement text in its package.</p>
+  {% endif %}
+</article>
+<aside class="panel">
+  <h3 style="margin-top:0">Submit</h3>
+  <form method="post" action="/c/{{ contest.code }}/submit" enctype="multipart/form-data">
+    <input type="hidden" name="label" value="{{ prob.label }}">
+    <label for="lang">Language</label>
+    <select id="lang" name="language">
+      {% for l in languages %}<option value="{{ l.id }}" {{ 'selected' if l.id == last_lang }}>{{ l.name }}</option>{% endfor %}
+    </select>
+    <label for="file">File</label>
+    <input id="file" type="file" name="file" accept=".cpp,.cc,.cxx,.java,.py">
+    <label for="src">…or paste the code</label>
+    <textarea id="src" class="code" name="source" rows="14" spellcheck="false" autocapitalize="off"></textarea>
+    <p><button class="primary" type="submit">Submit</button></p>
+    {% if now > contest.end_at %}<p class="muted small">The contest is over; runs are judged but don't count.</p>{% endif %}
+  </form>
+</aside>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/vendor/katex/katex.min.js" defer></script>
+<script src="/static/vendor/katex/auto-render.min.js" defer></script>
+{% endblock %}

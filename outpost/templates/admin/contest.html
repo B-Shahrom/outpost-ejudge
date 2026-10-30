@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}{{ contest.name }} · Outpost{% endblock %}
+{% block content %}
+<div class="row"><h1>{{ contest.name }}</h1><span class="muted mono">{{ contest.code }}</span><span class="spacer"></span>
+  <a class="btn" href="/c/{{ contest.code }}">Contestant view</a>
+  <a class="btn" href="/c/{{ contest.code }}/standings">Standings</a>
+  <a class="btn" href="/admin/contests/{{ contest.code }}/clarifications">Questions{% if pending %} <span class="pill warn">{{ pending }}</span>{% endif %}</a>
+  <a class="btn" href="/admin/submissions?contest={{ contest.code }}">Submissions</a>
+</div>
+<div class="panel">
+  <h3 style="margin-top:0">Problems</h3>
+  {% if problems %}
+  <form method="post" action="/admin/contests/{{ contest.code }}/problems/order">
+  <div class="table-wrap"><table>
+    <tr><th>Label</th><th>Order</th><th>Problem</th><th>Only for divisions</th><th>Remove</th></tr>
+    {% for p in problems %}<tr>
+      <td><input type="text" name="label_{{ p.id }}" value="{{ p.label }}" size="3"></td>
+      <td><input type="number" name="pos_{{ p.id }}" value="{{ p.position }}" style="width:70px"></td>
+      <td><a href="/admin/problems/{{ p.id }}">{{ p.name }}</a> <span class="muted small mono">{{ p.slug }}</span></td>
+      <td><input type="text" name="div_{{ p.id }}" value="{{ (p.cp_divisions|fromjson)|join(', ') }}" placeholder="all"></td>
+      <td><input type="checkbox" name="remove_{{ p.id }}" value="1"></td></tr>{% endfor %}
+  </table></div>
+  <p><button type="submit">Save problems</button></p>
+  </form>
+  {% endif %}
+  <form method="post" action="/admin/contests/{{ contest.code }}/problems" class="row">
+    <select name="problem_id" required>
+      {% for p in all_problems if p.status == 'ready' %}<option value="{{ p.id }}">{{ p.slug }} — {{ p.name }}</option>{% endfor %}
+    </select>
+    <input type="text" name="label" placeholder="label (auto)" size="10">
+    <button class="primary" type="submit">Add problem</button>
+  </form>
+</div>
+<div class="panel">
+  <div class="row"><h3 style="margin:0">Standings freeze</h3><span class="spacer"></span>
+    {% if contest.freeze_minutes %}
+      <form method="post" action="/admin/contests/{{ contest.code }}/unfreeze"><input type="hidden" name="value" value="{{ 0 if contest.unfrozen else 1 }}">
+      <button type="submit" class="{{ '' if contest.unfrozen else 'primary' }}">{{ 'Freeze again' if contest.unfrozen else 'Unfreeze standings' }}</button></form>
+    {% endif %}
+  </div>
+  <p class="small muted">{% if not contest.freeze_minutes %}No freeze set.{% elif contest.unfrozen %}Unfrozen: everyone sees final results.{% elif frozen %}Frozen now: contestants see the board as it was {{ contest.freeze_minutes }} minutes before the end.{% else %}Freezes {{ contest.freeze_minutes }} minutes before the end.{% endif %}
+  Export: <a href="/admin/contests/{{ contest.code }}/standings.csv">standings CSV</a> · <a href="/admin/contests/{{ contest.code }}/export.json">all submissions (JSON)</a></p>
+</div>
+<div class="panel">
+  <h3 style="margin-top:0">Settings</h3>
+  <form method="post" class="stack">
+    {% set c = contest %}{% include "admin/_contest_form.html" %}
+    <p><button class="primary" type="submit">Save</button></p>
+  </form>
+</div>
+{% endblock %}

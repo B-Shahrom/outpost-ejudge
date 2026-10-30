@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Contests</h1>
+<div class="panel">
+{% if contests %}
+<div class="table-wrap"><table>
+  <tr><th>Contest</th><th>Starts</th><th>Length</th><th>Scoring</th><th></th></tr>
+  {% for c in contests %}
+  <tr>
+    <td><a href="/c/{{ c.code }}">{{ c.name }}</a></td>
+    <td>{{ c.start_at|datetime }}</td>
+    <td>{{ ((c.end_at - c.start_at) / 60)|int }} min</td>
+    <td>{{ SCORING[c.scoring] }}</td>
+    <td>{% if now < c.start_at %}<span class="pill">upcoming</span>{% elif now <= c.end_at %}<span class="pill ok">running</span>{% else %}<span class="pill">finished</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table></div>
+{% else %}
+<p class="muted">No contests yet.{% if user.is_admin %} <a href="/admin/contests">Create one</a>.{% endif %}</p>
+{% endif %}
+</div>
+{% endblock %}

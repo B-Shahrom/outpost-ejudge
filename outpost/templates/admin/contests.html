@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Contests · Outpost{% endblock %}
+{% block content %}
+<h1>Contests</h1>
+{% if contests %}
+<div class="panel table-wrap"><table>
+  <tr><th>Code</th><th>Name</th><th>Start</th><th>Length</th><th>Scoring</th><th>Divisions</th><th></th></tr>
+  {% for c in contests %}<tr><td class="mono"><a href="/admin/contests/{{ c.code }}">{{ c.code }}</a></td><td>{{ c.name }}</td>
+    <td>{{ c.start_at|datetime }}</td><td>{{ ((c.end_at - c.start_at) / 60)|int }} min</td><td>{{ SCORING[c.scoring] }}</td>
+    <td class="small">{{ (c.divisions_json|fromjson)|join(', ') or 'all' }}</td>
+    <td>{% if not c.visible %}<span class="pill">hidden</span>{% endif %}</td></tr>{% endfor %}
+</table></div>
+{% endif %}
+<div class="panel">
+  <h3 style="margin-top:0">New contest</h3>
+  <form method="post" action="/admin/contests" class="stack">
+    <label for="code">Code (used in links)</label><input id="code" type="text" name="code" required pattern="[A-Za-z0-9_-]+" placeholder="weekly-1">
+    {% set c = none %}{% include "admin/_contest_form.html" %}
+    <p><button class="primary" type="submit">Create</button></p>
+  </form>
+</div>
+{% endblock %}

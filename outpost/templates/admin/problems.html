@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Problems · Outpost{% endblock %}
+{% block content %}
+{% if imports|selectattr('status', 'equalto', 'running')|list %}<meta http-equiv="refresh" content="3">{% endif %}
+<h1>Problems</h1>
+<div class="panel">
+  <form method="post" action="/admin/problems/import" enctype="multipart/form-data" class="row">
+    <label class="inline" for="pkg">Polygon package (.zip)</label>
+    <input id="pkg" type="file" name="package" accept=".zip" required>
+    <button class="primary" type="submit">Import</button>
+  </form>
+  <p class="small muted">Use Polygon's <i>Linux</i> or <i>Windows</i> package (tests included). A <i>Standard</i> package also works: missing tests are generated with the package's generators. Answers come from the <b>main</b> solution only. Re-importing a problem with the same short name updates it in place.</p>
+</div>
+{% for j in imports %}
+<div class="panel">
+  <div class="row"><b>{{ j.name }}</b><span class="pill {{ 'ok' if j.status == 'done' else ('bad' if j.status == 'failed' else 'warn') }}">{{ j.status }}</span></div>
+  <pre class="small" style="margin-top:8px;max-height:220px;overflow:auto">{{ j.log }}</pre>
+</div>
+{% endfor %}
+<div class="panel table-wrap">
+{% if problems %}
+<table>
+  <tr><th>Short name</th><th>Name</th><th class="num">TL</th><th class="num">ML</th><th class="num">Tests</th><th>Checker</th><th class="num">Main solution</th></tr>
+  {% for p in problems %}{% set tests = p.tests_json|fromjson %}
+  <tr>
+    <td><a href="/admin/problems/{{ p.id }}">{{ p.slug }}</a></td>
+    <td>{{ p.name }}{% if p.interactive %} <span class="pill">interactive</span>{% endif %}</td>
+    <td class="num">{{ p.time_limit_ms }} ms</td><td class="num">{{ p.memory_limit_mb }} MB</td>
+    <td class="num">{{ tests|length }}</td><td>{{ p.checker }}</td>
+    <td class="num">{% if p.main_max_ms is not none %}<span class="{{ 'v wrong_answer' if p.main_max_ms * 2 > p.time_limit_ms }}">{{ p.main_max_ms }} ms</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}<p class="muted">No problems yet.</p>{% endif %}
+</div>
+{% endblock %}

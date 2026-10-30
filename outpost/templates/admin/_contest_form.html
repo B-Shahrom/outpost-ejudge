@@ -1,0 +1,17 @@
+<div class="row" style="align-items:flex-start">
+  <div style="flex:1;min-width:200px">
+    <label for="name">Name</label><input id="name" type="text" name="name" value="{{ c.name if c else '' }}" required>
+    <label for="start">Start (this machine's time)</label><input id="start" type="datetime-local" name="start" value="{{ c.start_at|dtlocal if c else '' }}" required>
+    <label for="duration">Length, minutes</label><input id="duration" type="number" name="duration" value="{{ ((c.end_at - c.start_at) / 60)|int if c else 120 }}" min="1">
+    <label for="divisions">Divisions (comma-separated, empty = everyone)</label>
+    <input id="divisions" type="text" name="divisions" value="{{ (c.divisions_json|fromjson)|join(', ') if c else '' }}" placeholder="{{ divisions|join(', ') }}">
+  </div>
+  <div style="flex:1;min-width:200px">
+    <label for="scoring">Scoring</label>
+    <select id="scoring" name="scoring">{% for k, v in SCORING.items() %}<option value="{{ k }}" {{ 'selected' if c and c.scoring == k }}>{{ v }}</option>{% endfor %}</select>
+    <label for="penalty">Penalty per wrong try, minutes (ICPC, IOI with penalty)</label><input id="penalty" type="number" name="penalty" value="{{ c.penalty_minutes if c else 20 }}" min="0">
+    <label for="freeze">Freeze the standings for the last N minutes</label><input id="freeze" type="number" name="freeze" value="{{ c.freeze_minutes if c else 0 }}" min="0">
+    <p><label class="inline"><input type="checkbox" name="visible" value="1" {{ 'checked' if not c or c.visible }}> Visible to contestants</label></p>
+    <p><label class="inline"><input type="checkbox" name="public_standings" value="1" {{ 'checked' if not c or c.public_standings }}> Public standings</label></p>
+  </div>
+</div>

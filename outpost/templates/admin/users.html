@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Users · Outpost{% endblock %}
+{% block content %}
+<h1>Users</h1>
+{% if created %}
+<div class="panel">
+  <div class="row"><h3 style="margin:0">New passwords</h3><span class="spacer"></span>
+    <a class="btn primary" href="/admin/slips/{{ batch }}" target="_blank">Print login slips</a>
+    <form method="post" action="/admin/forget-passwords"><button type="submit">Done — forget them</button></form></div>
+  <p class="small muted">Shown until you click <i>forget</i>; Outpost only keeps hashes.</p>
+  <div class="table-wrap"><table class="small mono">{% for p in created %}<tr><td>{{ p.username }}</td><td>{{ p.name }}</td><td>{{ p.division }}</td><td><b>{{ p.password }}</b></td></tr>{% endfor %}</table></div>
+</div>
+{% endif %}
+<div class="panel">
+  <h3 style="margin-top:0">Add contestants</h3>
+  <form method="post" action="/admin/users/import">
+    <label for="rows">One per line: <span class="mono">username, full name, division[, password]</span> — a missing password is generated</label>
+    <textarea id="rows" name="rows" rows="6" class="code" placeholder="ali, Ali Karimov, Division A&#10;sara, Sara Rahimova, Division B"></textarea>
+    <p class="row"><button class="primary" type="submit">Create accounts</button><label class="inline"><input type="checkbox" name="admin" value="1"> as admins (jury)</label></p>
+  </form>
+</div>
+<div class="panel table-wrap"><table>
+  <tr><th>Username</th><th>Name</th><th>Division</th><th>Signed in from</th><th></th></tr>
+  {% for u in users %}<tr>
+    <td class="mono">{{ u.username }}{% if u.is_admin %} <span class="pill">admin</span>{% endif %}</td>
+    <td colspan="2"><form method="post" action="/admin/users/{{ u.id }}" class="row"><input type="hidden" name="action" value="edit">
+      <input type="text" name="display_name" value="{{ u.display_name }}" size="18"><input type="text" name="division" value="{{ u.division }}" size="12">
+      <button type="submit" class="link">save</button></form></td>
+    <td class="small mono">{{ u.session_ip or '' }}</td>
+    <td class="row">
+      <form method="post" action="/admin/users/{{ u.id }}"><input type="hidden" name="action" value="reset"><button class="link" type="submit">new password</button></form>
+      {% if u.session_token %}<form method="post" action="/admin/users/{{ u.id }}"><input type="hidden" name="action" value="kick"><button class="link" type="submit">sign out</button></form>{% endif %}
+      {% if u.id != user.id %}<form method="post" action="/admin/users/{{ u.id }}"><input type="hidden" name="action" value="delete"><button class="link danger" type="submit" data-confirm="Delete {{ u.username }} and their submissions?">delete</button></form>{% endif %}
+    </td></tr>{% endfor %}
+</table></div>
+{% endblock %}
