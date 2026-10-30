@@ -20,35 +20,54 @@ accounts anywhere else.
 
 ## Quick start
 
-### Docker (Linux, Windows via WSL2, macOS)
+### Windows
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) and start it.
+2. Download this repository (Code → Download ZIP) and unzip it.
+3. Turn on **Settings → Network & internet → Mobile hotspot**.
+4. Double-click **`start-windows.bat`**.
+
+The first start builds the image, which takes a few minutes. After that it
+creates the admin `jury` and prints the password, runs the self-test, and opens
+the admin page. Contestants join the hotspot and open
+**http://192.168.137.1:8000/**, which is Windows' hotspot address. The dashboard
+shows it with a QR code, and you can change it there if your network is
+different.
+
+If contestants can't connect, run `start-windows.bat` once with right-click →
+*Run as administrator*. That lets it open port 8000 in Windows Firewall.
+
+### Linux and macOS
 
 ```bash
-git clone https://github.com/b-shahrom/outpost-ejudge && cd outpost-ejudge
-docker compose up -d --build
-docker compose exec outpost outpost admin jury        # prints the admin password
+git clone https://github.com/B-Shahrom/outpost-ejudge && cd outpost-ejudge
+./start.sh
 ```
 
-Open `http://localhost:8000/admin`. The dashboard shows the address contestants
-should type.
+The script does the same steps. You can run either script again at any time:
+your data is kept in a Docker volume, and the admin is only created once. To
+stop, run `docker compose down`.
 
-> **On Windows and macOS** Docker runs inside a VM, so `network_mode: host`
-> does not expose port 8000 to the hotspot. Replace it with `ports: ["8000:8000"]`
-> in `docker-compose.yml` and allow port 8000 through the firewall. The
-> dashboard will show the VM's address, so give contestants the laptop's
-> hotspot IP instead (`ipconfig` on Windows).
-
-### Directly on Linux
+### Without Docker (Linux)
 
 ```bash
 sudo apt install g++ openjdk-21-jdk-headless python3 python3-venv
 python3 -m venv .venv && . .venv/bin/activate && pip install .
 sudo -E .venv/bin/outpost admin jury
+sudo -E .venv/bin/outpost selftest         # checks compilers and the sandbox
 sudo -E .venv/bin/outpost serve            # http://<this machine>:8000/
 ```
 
 Run it as root: that is what lets the sandbox switch each run to its own user
 and give it an empty network namespace. Without root, Outpost still works but
-with weaker isolation, and the dashboard warns about it.
+with weaker isolation, and both the self-test and the dashboard say so.
+
+### Before every contest
+
+`outpost selftest` (or `docker compose exec outpost outpost selftest`) judges
+known-good and known-bad programs in every language. It also checks that
+submissions have no network and can't read the answers. The start scripts run
+it every time.
 
 ## Running a contest
 

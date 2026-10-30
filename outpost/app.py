@@ -26,7 +26,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import auth, db, languages, scoring
+from . import auth, config, db, languages, scoring
 from .config import Settings
 from .judge import VERDICTS
 
@@ -357,16 +357,36 @@ def create_app(settings: Settings, pool=None) -> FastAPI:
     def admin_home(request: Request):
         c = conn()
         need_admin(request, c)
-        urls = [f"http://{ip}:{settings.port}/" for ip in lan_addresses()]
+        urls, source = contestant_urls(c)
         qr = segno.make(urls[0]).svg_inline(scale=5, dark="#111", light="#fff", omitsize=True) if urls else ""
         queue = db.one(c, "SELECT COUNT(*) AS n FROM submissions WHERE status!='done'")["n"]
         pool = app.state.pool
-        return render(request, "admin/home.html", c, urls=urls, qr=qr, queue=queue,
+        return render(request, "admin/home.html", c, urls=urls, qr=qr, queue=queue, url_source=source,
+                      saved_url=db.get_setting(c, "public_url"),
                       workers=pool.count if pool else 0,
                       isolated=pool.isolated if pool else None,
                       contests=db.all_(c, "SELECT * FROM contests ORDER BY start_at DESC"),
                       problems=db.one(c, "SELECT COUNT(*) AS n FROM problems")["n"],
                       users=db.one(c, "SELECT COUNT(*) AS n FROM users WHERE is_admin=0")["n"])
+
+    def contestant_urls(c) -> tuple[list[str], str]:
+        """The address(es) contestants should type, and where that came from."""
+        saved = db.get_setting(c, "public_url")
+        if saved:
+            return [saved], "set"
+        if settings.public_url:
+            return [settings.public_url], "env"
+        if config.in_container():
+            return [], "container"  # our own addresses are the container's, useless to them
+        return [f"http://{ip}:{settings.port}/" for ip in lan_addresses()], "detected"
+
+    @app.post("/admin/address")
+    def admin_address(request: Request, url: str = Form("")):
+        c = conn()
+        need_admin(request, c)
+        db.set_setting(c, "public_url", config.normalise_url(url))
+        flash(request, "Address saved." if url.strip() else "Address cleared: using the detected one.")
+        raise Redirect("/admin")
 
     # problems
     @app.get("/admin/problems", response_class=HTMLResponse)
@@ -731,7 +751,7 @@ def create_app(settings: Settings, pool=None) -> FastAPI:
     def admin_slips(request: Request, batch: str):
         c = conn()
         need_admin(request, c)
-        urls = [f"http://{ip}:{settings.port}/" for ip in lan_addresses()]
+        urls, _ = contestant_urls(c)
         return render(request, "admin/slips.html", c, people=app.state.batches.get(batch, []),
                       url=urls[0] if urls else "")
 

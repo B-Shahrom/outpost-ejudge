@@ -150,3 +150,9 @@ def test_precompiled_header_is_used(settings, tmp_path):
                           "-x", "c++", "-"], input=probe, capture_output=True, text=True).stderr
     assert out.lstrip().startswith("! "), out[:200]
     j.sb.clean()
+
+
+def test_selftest_passes(settings, capsys):
+    from outpost import selftest
+    assert selftest.run() == 0, capsys.readouterr().out
+    assert capsys.readouterr().out.rstrip().endswith("Ready.")

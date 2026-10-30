@@ -29,6 +29,10 @@ class Settings:
     # First uid handed to sandboxed runs; worker N uses base + N so two runs
     # never share a uid (and so never see each other's processes or files).
     sandbox_uid_base: int
+    # The address contestants type, when we can't see it ourselves (inside a
+    # container, the machine's own addresses are hidden). The admin can also
+    # set it on the dashboard; that wins.
+    public_url: str = ""
 
     @property
     def db_path(self) -> Path:
@@ -89,4 +93,19 @@ def load() -> Settings:
         port=int(os.environ.get("OUTPOST_PORT", "8000")),
         workers=int(os.environ.get("OUTPOST_WORKERS", _default_workers())),
         sandbox_uid_base=int(os.environ.get("OUTPOST_SANDBOX_UID", "60000")),
+        public_url=normalise_url(os.environ.get("OUTPOST_PUBLIC_URL", "")),
     )
+
+
+def normalise_url(text: str) -> str:
+    """``192.168.137.1:8000`` -> ``http://192.168.137.1:8000/``; empty stays empty."""
+    text = text.strip()
+    if not text:
+        return ""
+    if "://" not in text:
+        text = "http://" + text
+    return text if text.endswith("/") else text + "/"
+
+
+def in_container() -> bool:
+    return Path("/.dockerenv").exists() or Path("/run/.containerenv").exists()

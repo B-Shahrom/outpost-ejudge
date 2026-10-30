@@ -4,6 +4,7 @@
     outpost admin NAME [--password P]  create (or reset) an admin account
     outpost import PACKAGE.zip         import a Polygon package
     outpost users FILE.csv             create contestants from username,name,division[,password]
+    outpost selftest                   check compilers and the sandbox before a contest
     outpost judge                      judge everything pending, then exit (no server)
 """
 
@@ -38,8 +39,12 @@ def cmd_serve(args, settings) -> int:
     pool.start()
     print(f"Outpost {__version__} — {workers} judge worker(s), "
           f"network isolation {'on' if pool.isolated else 'OFF'}")
-    for ip in lan_addresses():
-        print(f"  contestants: http://{ip}:{settings.port}/")
+    if settings.public_url:
+        print(f"  contestants: {settings.public_url}")
+    else:
+        for ip in lan_addresses():
+            print(f"  contestants: http://{ip}:{settings.port}/")
+    print(f"  admin:       http://localhost:{settings.port}/admin")
     try:
         uvicorn.run(create_app(settings, pool), host=settings.host, port=settings.port,
                     log_level="warning")
@@ -73,6 +78,8 @@ def cmd_admin(args, settings) -> int:
     conn = db.connect(settings.db_path)
     password = args.password or auth.generate_password(12)
     row = db.one(conn, "SELECT id FROM users WHERE username=?", (args.name,))
+    if args.if_missing and db.one(conn, "SELECT 1 FROM users WHERE is_admin=1"):
+        return 0  # the start scripts call this every time; only the first run creates one
     if row:
         conn.execute("UPDATE users SET password_hash=?, is_admin=1 WHERE id=?",
                      (auth.hash_password(password), row["id"]))
@@ -125,6 +132,11 @@ def cmd_users(args, settings) -> int:
     return 0
 
 
+def cmd_selftest(args, settings) -> int:
+    from .selftest import run
+    return run()
+
+
 def cmd_judge(args, settings) -> int:
     from .worker import drain
 
@@ -148,6 +160,8 @@ def main(argv: list[str] | None = None) -> int:
     a = sub.add_parser("admin", help="create or reset an admin account")
     a.add_argument("name")
     a.add_argument("--password", help="default: generate one and print it")
+    a.add_argument("--if-missing", action="store_true",
+                   help="do nothing if any admin exists (for start scripts)")
     a.set_defaults(fn=cmd_admin)
 
     i = sub.add_parser("import", help="import a Polygon package zip")
@@ -160,6 +174,9 @@ def main(argv: list[str] | None = None) -> int:
     u = sub.add_parser("users", help="create contestants from a CSV; prints their passwords")
     u.add_argument("csv")
     u.set_defaults(fn=cmd_users)
+
+    t = sub.add_parser("selftest", help="check compilers and the sandbox on this machine")
+    t.set_defaults(fn=cmd_selftest)
 
     j = sub.add_parser("judge", help="judge everything pending and exit")
     j.set_defaults(fn=cmd_judge)

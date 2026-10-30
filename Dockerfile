@@ -11,7 +11,7 @@ COPY pyproject.toml README.md ./
 COPY outpost ./outpost
 RUN pip install --no-cache-dir .
 
-ENV OUTPOST_DATA=/data
+ENV OUTPOST_DATA=/data PYTHONUNBUFFERED=1
 VOLUME /data
 EXPOSE 8000
 CMD ["outpost", "serve"]

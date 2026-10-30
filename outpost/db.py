@@ -90,6 +90,11 @@ CREATE TABLE IF NOT EXISTS submissions (
 CREATE INDEX IF NOT EXISTS submissions_queue ON submissions(status, id);
 CREATE INDEX IF NOT EXISTS submissions_contest ON submissions(contest_id, user_id);
 
+CREATE TABLE IF NOT EXISTS app_settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS clarifications (
     id          INTEGER PRIMARY KEY,
     contest_id  INTEGER NOT NULL REFERENCES contests(id) ON DELETE CASCADE,
@@ -129,6 +134,19 @@ def one(conn: sqlite3.Connection, sql: str, params: Iterable[Any] = ()) -> sqlit
 
 def all_(conn: sqlite3.Connection, sql: str, params: Iterable[Any] = ()) -> list[sqlite3.Row]:
     return conn.execute(sql, tuple(params)).fetchall()
+
+
+def get_setting(conn: sqlite3.Connection, key: str, default: str = "") -> str:
+    row = one(conn, "SELECT value FROM app_settings WHERE key=?", (key,))
+    return row["value"] if row else default
+
+
+def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
+    if value:
+        conn.execute("INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                     "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
+    else:
+        conn.execute("DELETE FROM app_settings WHERE key=?", (key,))
 
 
 def loads(text: str | None, default: Any = None) -> Any:

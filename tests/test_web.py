@@ -195,3 +195,18 @@ def test_upload_import_runs_in_background(app, settings, tmp_path):
     job["proc"].wait(120)
     page = admin.get("/admin/problems").text
     assert "imported" in page, page
+
+
+def test_contestant_address_can_be_set(app):
+    from outpost.config import normalise_url
+    assert normalise_url("192.168.137.1:8000") == "http://192.168.137.1:8000/"
+    assert normalise_url(" ") == ""
+    admin = client(app, "jury", "jurypass")
+    admin.post("/admin/address", data={"url": "192.168.137.1:8000"})
+    page = admin.get("/admin").text
+    assert "http://192.168.137.1:8000/" in page and "<svg" in page
+    make_users(admin, "slip1, Slip One, Div A")
+    batch = admin.get("/admin/users").text.split("/admin/slips/")[1].split('"')[0]
+    assert "http://192.168.137.1:8000/" in admin.get(f"/admin/slips/{batch}").text
+    admin.post("/admin/address", data={"url": ""})
+    assert "Detected" in admin.get("/admin").text or "container" in admin.get("/admin").text

@@ -1,17 +1,27 @@
-# docker compose up -d   then   docker compose exec outpost outpost admin <name>
+# Start with ./start.sh (Linux, macOS) or start-windows.bat (Windows): they find
+# this laptop's address for the login slips and create the first admin.
 #
-# network_mode: host so contestants on the hotspot reach the server directly and
-# the dashboard shows the address they should type. SYS_ADMIN lets each run get
-# its own empty network namespace (no network at all for submissions).
+# By hand:  OUTPOST_PUBLIC_URL=http://<this laptop's IP>:8000/ docker compose up -d --build
+#           docker compose exec outpost outpost admin jury
 services:
   outpost:
     build: .
-    network_mode: host
+    ports:
+      - "8000:8000"
+    # Each run gets its own empty network namespace (no network at all for
+    # submissions); creating one needs SYS_ADMIN inside the container.
     cap_add: [SYS_ADMIN]
     security_opt: ["seccomp=unconfined", "apparmor=unconfined"]
     volumes:
-      - ./outpost-data:/data
+      # A named volume, not ./outpost-data: on Windows and macOS a folder
+      # shared from the host has unreliable file locking for SQLite. Back up
+      # with:  docker compose cp outpost:/data ./outpost-backup
+      - outpost-data:/data
     environment:
       OUTPOST_PORT: "8000"
+      OUTPOST_PUBLIC_URL: ${OUTPOST_PUBLIC_URL:-}
       # OUTPOST_WORKERS: "3"   # default: CPU cores - 1
     restart: unless-stopped
+
+volumes:
+  outpost-data:

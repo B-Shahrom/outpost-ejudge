@@ -24,11 +24,40 @@ jobs:
         run: sudo -E env "PATH=$PATH" python -m pytest -q
 
   docker:
+    # The real deployment path: start.sh builds and starts the container,
+    # creates the admin, and runs `outpost selftest` inside it.
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Build image
-        run: docker build -t outpost-ejudge .
-      - name: Smoke test
+      - name: Start with start.sh
+        run: ./start.sh | tee start.log
+      - name: Self-test passed inside the container
+        run: grep -q '^Ready\.$' start.log
+      - name: Serves contestants on the published port
         run: |
-          docker run --rm outpost-ejudge sh -c 'g++ --version && javac -version && outpost --version'
+          for i in $(seq 30); do curl -sf http://localhost:8000/healthz && break; sleep 1; done
+          curl -sf -o /dev/null -w '%{http_code}\n' http://localhost:8000/login
+      - name: Second start keeps the data and creates no second admin
+        run: |
+          ./start.sh | tee start2.log
+          ! grep -q 'Password:' start2.log
+      - name: Logs
+        if: always()
+        run: docker compose logs outpost
+
+  windows-script:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse start.ps1
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD\start.ps1", [ref]$null, [ref]$errors) | Out-Null
+          if ($errors) { $errors; exit 1 }
+      - name: Dry run (PowerShell 7)
+        shell: pwsh
+        run: ./start.ps1 -DryRun
+      - name: Dry run (Windows PowerShell 5.1, what start-windows.bat uses)
+        shell: powershell
+        run: .\start.ps1 -DryRun

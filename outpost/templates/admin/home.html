@@ -30,8 +30,15 @@
     <div class="big-url">{{ urls[0] }}</div>
     <div class="qr" style="margin:12px 0">{{ qr|safe }}</div>
     {% if urls|length > 1 %}<p class="small muted">Also: {% for u in urls[1:] %}{{ u }}{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+  {% else %}
+    <div class="flash" style="text-align:left">Outpost runs in a container here, so it can't see this laptop's address. Type the address contestants should open below. With the Windows Mobile Hotspot it is usually <b>http://192.168.137.1:8000/</b>; <span class="mono">ipconfig</span> shows it.</div>
   {% endif %}
   <p class="small muted">Everyone joins this machine's Wi-Fi hotspot (or the same network), then opens the address.</p>
+  <form method="post" action="/admin/address" class="row" style="justify-content:center">
+    <input type="text" name="url" value="{{ saved_url }}" placeholder="{{ urls[0] if urls else 'http://192.168.137.1:8000/' }}" aria-label="Address contestants open" style="flex:1;min-width:0">
+    <button type="submit">{{ 'Save' if not saved_url else 'Change' }}</button>
+  </form>
+  <p class="small muted">{% if url_source == 'set' %}Set here — empty the box and save to go back to the detected address.{% elif url_source == 'env' %}From OUTPOST_PUBLIC_URL (the start script sets it).{% elif url_source == 'detected' %}Detected; set it here if it's wrong.{% endif %} Used on the login slips too.</p>
 </aside>
 </div>
 {% endblock %}
