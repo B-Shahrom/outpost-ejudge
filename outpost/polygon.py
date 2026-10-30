@@ -131,6 +131,10 @@ def parse(root: Path) -> dict:
         s = ex.find("source")
         if s is not None:
             executables.append((root / s.get("path"), s.get("type", "")))
+    validator = None
+    vsrc = xml.find("./assets/validators/validator/source")
+    if vsrc is not None:
+        validator = (root / vsrc.get("path"), vsrc.get("type", ""))
     pdfs = {s.get("language"): root / s.get("path")
             for s in xml.findall("./statements/statement")
             if s.get("type") == "application/pdf"}
@@ -148,6 +152,7 @@ def parse(root: Path) -> dict:
         "interactor": source_of("./assets/interactor"),
         "main": main,
         "executables": executables,
+        "validator": validator,
         "pdfs": pdfs,
     }
 
@@ -236,6 +241,39 @@ def _generate_inputs(root: Path, info: dict, tests_dir: Path, missing: list[dict
         shutil.rmtree(exe_dir, ignore_errors=True)
 
 
+def _validate(root: Path, info: dict, tests_dir: Path, log: Log) -> None:
+    """Run the package's validator over every input, as Polygon does.
+
+    A rejected test is reported, not fatal: the package is the setter's call,
+    but a generator that behaves differently here than on Polygon shows up.
+    """
+    if not info["validator"]:
+        return
+    src, kind = info["validator"]
+    if languages.from_polygon_type(kind) != "cpp":
+        log(f"validator is {kind}, not C++: skipped")
+        return
+    work = Path(tempfile.mkdtemp(prefix="val-"))
+    try:
+        exe = work / "val"
+        compile_cpp(src, exe, [root / "files", src.parent], log)
+        bad = []
+        for t in info["tests"]:
+            argv = [str(exe), "--testset", "tests"]
+            if t.get("group"):
+                argv += ["--group", str(t["group"])]
+            with open(tests_dir / f"{t['index']:02d}", "rb") as fin:
+                res = subprocess.run(argv, stdin=fin, capture_output=True, timeout=60, cwd=work)
+            if res.returncode != 0:
+                bad.append(f"test {t['index']}: {res.stderr.decode(errors='replace').strip()[-300:]}")
+        if bad:
+            log("WARNING validator rejects:\n  " + "\n  ".join(bad))
+        else:
+            log(f"validator: all {len(info['tests'])} tests valid")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def build(root: Path, dest: Path, settings: Settings, log: Log, verify: bool = True) -> dict:
     """Lay the problem out in ``dest`` and return the fields for its DB row."""
     info = parse(root)
@@ -261,6 +299,8 @@ def build(root: Path, dest: Path, settings: Settings, log: Log, verify: bool = T
     log(f"{len(info['tests'])} tests, {len(missing_in)} to generate, {len(missing_ans)} answers to compute")
     if missing_in:
         _generate_inputs(root, info, tests_dir, missing_in, log)
+
+    _validate(root, info, tests_dir, log)
 
     checker = "builtin"
     if info["checker"]:

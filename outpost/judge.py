@@ -200,12 +200,15 @@ class Judge:
             return JUDGE_ERROR, None, f"checker {res.status}: {msg}"
         if code == 0:
             return ACCEPTED, None, msg
-        if code in (1, 2, 4):  # WA, PE (electicode has no PE), dirt
+        if code in (1, 2, 4, 8):  # WA, PE (electicode has none), dirt, unexpected EOF
             return WRONG_ANSWER, None, msg
-        if code == 7:  # quitp: partial points, message starts with the amount
+        if code == 7:
+            # quitp(): partly right. testlib prints "points <value> <message>";
+            # the test stays a wrong answer but earns those points (capped at
+            # what the test is worth, see _test_points).
             m = re.match(r"\s*points\s+([0-9.]+)|\s*([0-9.]+)", msg)
             pts = float(next(g for g in m.groups() if g)) if m else 0.0
-            return (ACCEPTED if pts > 0 else WRONG_ANSWER), pts, msg
+            return WRONG_ANSWER, pts, msg
         return JUDGE_ERROR, None, f"checker exit code {code}: {msg}"
 
     # -- whole submission ---------------------------------------------------
@@ -261,10 +264,8 @@ class Judge:
                 elif g.get("policy") == "each-test":
                     for i in idx:
                         r = run_one(i)
-                        if r.verdict == ACCEPTED:
-                            got += _test_points(p, i, r)
-                        else:
-                            all_ok = False
+                        got += _test_points(p, i, r)
+                        all_ok &= r.verdict == ACCEPTED
                 else:  # complete-group: all or nothing, stop at the first failure
                     for i in idx:
                         if run_one(i).verdict != ACCEPTED:
@@ -283,9 +284,7 @@ class Judge:
                     run_one(t["index"])
         else:
             for t in sorted(p.tests, key=lambda t: t["index"]):
-                r = run_one(t["index"])
-                if r.verdict == ACCEPTED:
-                    score += _test_points(p, t["index"], r)
+                score += _test_points(p, t["index"], run_one(t["index"]))
             if not any(t.get("points") for t in p.tests):
                 score = max_points(p) if all(r.verdict == ACCEPTED for r in results.values()) else 0.0
 
@@ -299,10 +298,15 @@ class Judge:
 # -- scoring helpers ----------------------------------------------------------
 
 def _test_points(p: ProblemSpec, i: int, r: TestResult) -> float:
-    if r.points is not None:
-        return r.points
+    """Points a test earns: all of them when accepted, the checker's share (never
+    more than the test is worth) when it was partly right, else none."""
     t = next((t for t in p.tests if t["index"] == i), {})
-    return float(t.get("points") or 0)
+    worth = float(t.get("points") or 0)
+    if r.verdict == ACCEPTED:
+        return worth
+    if r.points is not None:
+        return max(0.0, min(r.points, worth))
+    return 0.0
 
 
 def group_max(p: ProblemSpec, g: dict) -> float:
