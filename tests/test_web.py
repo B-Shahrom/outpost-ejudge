@@ -253,3 +253,15 @@ def test_print_view_and_merged_pdf(app, settings, problems):
         assert len(PdfReader(io.BytesIO(r.content)).pages) == 2
     finally:
         pdf.unlink()
+
+
+def test_archive_download_and_upload(app):
+    admin = client(app, "jury", "jurypass")
+    r = admin.get("/admin/contests/icpc1/archive.zip")
+    assert r.status_code == 200 and r.content[:2] == b"PK"
+    up = admin.post("/admin/archive/import", files={"archive": ("a.zip", r.content)}, data={"code": "icpc1-copy"})
+    assert up.headers["location"] == "/admin/contests/icpc1-copy"
+    assert "Contest icpc1-copy" in admin.get("/admin/contests/icpc1-copy").text or \
+        "icpc1-copy" in admin.get("/admin/contests/icpc1-copy").text
+    again = admin.post("/admin/archive/import", files={"archive": ("a.zip", r.content)}, data={"code": "icpc1-copy"})
+    assert again.headers["location"] == "/admin/contests"

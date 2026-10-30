@@ -117,8 +117,14 @@ Next:
   language, so it works for packages without PDFs. When every problem has a
   PDF in that language, `/c/<code>/statements.pdf` merges the packages' own
   LaTeX-typeset PDFs (pypdf).
-- [ ] **Contest archive**: export or import a contest with problems,
-  users and submissions as one zip.
+- [x] **Contest archive** (done): one zip with the contest, its problems
+  (tests, statements, checker and interactor *sources*; binaries are rebuilt
+  on import), users (password hashes), judged submissions and questions.
+  Import never overwrites: existing problems and users are kept, and a taken
+  contest code needs a new one. It runs in one transaction, so a failure
+  leaves nothing behind. A *problem set only* export shares a contest without
+  contestants' data. `outpost archive export|import`, or the buttons on the
+  admin pages.
 - [ ] **Remote judge workers**: other laptops on the network join with
   `outpost worker --server http://…` to add judging capacity.
 

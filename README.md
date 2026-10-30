@@ -97,7 +97,9 @@ it every time.
    for everyone) and post announcements. **Submissions** filters and rejudges.
    Open **Standings → Projector view** on the wall screen.
 6. At the end, **Unfreeze**, then export standings (CSV) and every submission
-   with its source (JSON).
+   with its source (JSON). **Whole contest (archive)** saves everything in one
+   zip: keep it as a backup, or import it on another laptop. **Problem set
+   only** gives the same zip without contestants, to reuse or share.
 
 ## How judging works
 

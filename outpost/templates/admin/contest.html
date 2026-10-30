@@ -40,7 +40,7 @@
     {% endif %}
   </div>
   <p class="small muted">{% if not contest.freeze_minutes %}No freeze set.{% elif contest.unfrozen %}Unfrozen: everyone sees final results.{% elif frozen %}Frozen now: contestants see the board as it was {{ contest.freeze_minutes }} minutes before the end.{% else %}Freezes {{ contest.freeze_minutes }} minutes before the end.{% endif %}
-  Export: <a href="/admin/contests/{{ contest.code }}/standings.csv">standings CSV</a> · <a href="/admin/contests/{{ contest.code }}/export.json">all submissions (JSON)</a></p>
+  Export: <a href="/admin/contests/{{ contest.code }}/standings.csv">standings CSV</a> · <a href="/admin/contests/{{ contest.code }}/export.json">all submissions (JSON)</a> · <a href="/admin/contests/{{ contest.code }}/archive.zip">whole contest (archive)</a> · <a href="/admin/contests/{{ contest.code }}/archive.zip?people=0">problem set only</a></p>
 </div>
 <div class="panel">
   <h3 style="margin-top:0">Settings</h3>

@@ -274,6 +274,24 @@ def _validate(root: Path, info: dict, tests_dir: Path, log: Log) -> None:
         shutil.rmtree(work, ignore_errors=True)
 
 
+def keep_source(src: Path, target: Path, root: Path) -> None:
+    """Keep a checker's or interactor's source and the package's headers, so a
+    contest archive can rebuild the binary on another machine."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, target)
+    for header in list((root / "files").glob("*.h")) + list(src.parent.glob("*.h")):
+        if not (target.parent / header.name).exists():
+            shutil.copy2(header, target.parent / header.name)
+
+
+def rebuild_binaries(problem_dir: Path, log: Log) -> None:
+    """Compile check/interactor from src/ (archives carry sources, not binaries)."""
+    for name in ("check", "interactor"):
+        src = problem_dir / "src" / f"{name}.cpp"
+        if src.exists():
+            compile_cpp(src, problem_dir / name, [src.parent], log)
+
+
 def build(root: Path, dest: Path, settings: Settings, log: Log, verify: bool = True) -> dict:
     """Lay the problem out in ``dest`` and return the fields for its DB row."""
     info = parse(root)
@@ -306,6 +324,7 @@ def build(root: Path, dest: Path, settings: Settings, log: Log, verify: bool = T
     if info["checker"]:
         src, _ = info["checker"]
         compile_cpp(src, dest / "check", [root / "files", src.parent], log)
+        keep_source(src, dest / "src" / "check.cpp", root)
         checker = "testlib"
     else:
         log("no checker in the package: using the built-in token comparison")
@@ -313,6 +332,7 @@ def build(root: Path, dest: Path, settings: Settings, log: Log, verify: bool = T
     if info["interactor"]:
         src, _ = info["interactor"]
         compile_cpp(src, dest / "interactor", [root / "files", src.parent], log)
+        keep_source(src, dest / "src" / "interactor.cpp", root)
         interactive = True
 
     statements = read_statements(root, info, dest, slug)

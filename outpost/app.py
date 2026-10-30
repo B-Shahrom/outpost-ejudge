@@ -718,6 +718,40 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
         return Response(scoring.to_csv(board), media_type="text/csv", headers={
             "Content-Disposition": f'attachment; filename="{code}-standings.csv"'})
 
+    @app.get("/admin/contests/{code}/archive.zip")
+    def admin_archive(request: Request, code: str, people: int = 1):
+        from .archive import export_contest
+        c = conn(request)
+        u = need_admin(request, c)
+        contest = contest_by_code(c, code, u)
+        out = settings.uploads_dir / f"archive-{contest['id']}-{int(time.time() * 1000)}.zip"
+        export_contest(c, settings, code, out, include_people=bool(people))
+        data = out.read_bytes()
+        out.unlink()
+        name = f"{code}{'' if people else '-problems'}.outpost.zip"
+        return Response(data, media_type="application/zip",
+                        headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+    @app.post("/admin/archive/import")
+    async def admin_archive_import(request: Request, archive: UploadFile = File(...), code: str = Form("")):
+        from .archive import ArchiveError, import_contest
+        c = conn(request)
+        need_admin(request, c)
+        path = settings.uploads_dir / f"incoming-{int(time.time() * 1000)}.zip"
+        with open(path, "wb") as f:
+            while chunk := await archive.read(1 << 20):
+                f.write(chunk)
+        lines: list[str] = []
+        try:
+            new = import_contest(c, settings, path, new_code=code.strip() or None, log=lines.append)
+        except ArchiveError as e:
+            flash(request, f"Import failed: {e}")
+            raise Redirect("/admin/contests")
+        finally:
+            path.unlink(missing_ok=True)
+        flash(request, lines[-1] if lines else "Imported.")
+        raise Redirect(f"/admin/contests/{new}")
+
     @app.get("/admin/contests/{code}/export.json")
     def admin_export(request: Request, code: str):
         c = conn(request)

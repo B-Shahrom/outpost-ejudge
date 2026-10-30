@@ -5,6 +5,7 @@
     outpost import PACKAGE.zip         import a Polygon package
     outpost users FILE.csv             create contestants from username,name,division[,password]
     outpost polygon list|import|build  work with your Polygon account (needs the internet)
+    outpost archive export|import ...  a whole contest as one zip (move, back up, share)
     outpost selftest                   check compilers and the sandbox before a contest
     outpost judge                      judge everything pending, then exit (no server)
 """
@@ -222,6 +223,26 @@ def cmd_polygon(args, settings) -> int:
         return 1
 
 
+def cmd_archive(args, settings) -> int:
+    from .archive import ArchiveError, export_contest, import_contest
+    settings.ensure_dirs()
+    db.init(settings.db_path)
+    conn = db.connect(settings.db_path)
+    try:
+        if args.action == "export":
+            out = Path(args.file or f"{args.target}.outpost.zip")
+            n = export_contest(conn, settings, args.target, out, include_people=not args.problems_only)
+            print(f"wrote {out}: {n['problems']} problem(s), {n['users']} user(s), "
+                  f"{n['submissions']} submission(s)")
+        else:
+            code = import_contest(conn, settings, Path(args.target), new_code=args.code)
+            print(f"imported as contest {code!r}")
+    except ArchiveError as e:
+        print(f"FAILED: {e}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def cmd_selftest(args, settings) -> int:
     from .selftest import run
     return run()
@@ -269,6 +290,15 @@ def main(argv: list[str] | None = None) -> int:
     pg.add_argument("action", choices=["list", "import", "build"])
     pg.add_argument("problems", nargs="*", help="problem ids or names (import, build)")
     pg.set_defaults(fn=cmd_polygon)
+
+    ar = sub.add_parser("archive", help="export a contest to one zip, or import one")
+    ar.add_argument("action", choices=["export", "import"])
+    ar.add_argument("target", help="contest code (export) or archive file (import)")
+    ar.add_argument("file", nargs="?", help="export: output file (default <code>.outpost.zip)")
+    ar.add_argument("--code", help="import: create the contest under this code instead")
+    ar.add_argument("--problems-only", action="store_true",
+                    help="export: leave users, submissions and questions out")
+    ar.set_defaults(fn=cmd_archive)
 
     t = sub.add_parser("selftest", help="check compilers and the sandbox on this machine")
     t.set_defaults(fn=cmd_selftest)

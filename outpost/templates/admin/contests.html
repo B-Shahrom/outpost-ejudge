@@ -12,6 +12,15 @@
 </table></div>
 {% endif %}
 <div class="panel">
+  <h3 style="margin-top:0">Import a contest archive</h3>
+  <form method="post" action="/admin/archive/import" enctype="multipart/form-data" class="row">
+    <input type="file" name="archive" accept=".zip" required aria-label="Contest archive">
+    <input type="text" name="code" placeholder="new code (if taken)" pattern="[A-Za-z0-9_-]*" aria-label="Contest code">
+    <button type="submit">Import</button>
+  </form>
+  <p class="small muted">From another Outpost's <i>whole contest</i> or <i>problem set only</i> export. Problems and users that already exist here are kept as they are.</p>
+</div>
+<div class="panel">
   <h3 style="margin-top:0">New contest</h3>
   <form method="post" action="/admin/contests" class="stack">
     <label for="code">Code (used in links)</label><input id="code" type="text" name="code" required pattern="[A-Za-z0-9_-]+" placeholder="weekly-1">
