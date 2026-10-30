@@ -11,13 +11,15 @@ forking a sandboxed child safely needs, and each gets its own sandbox uid.
 
 from __future__ import annotations
 
+import fcntl
 import multiprocessing as mp
+import os
 import signal
 import sqlite3
 import time
 import traceback
 
-from . import db
+from . import db, languages
 from .config import Settings
 from .judge import JUDGE_ERROR, Judge, ProblemSpec
 from .sandbox import Sandbox, network_isolation_available
@@ -78,14 +80,51 @@ def judge_submission(conn: sqlite3.Connection, judge: Judge, settings: Settings,
 def make_judge(settings: Settings, n: int, isolate: bool) -> Judge:
     work = settings.boxes_dir / f"worker-{n}"
     return Judge(Sandbox(work / "box", uid=settings.sandbox_uid_base + n, isolate_network=isolate),
-                 work / "io")
+                 work / "io", pch_dir=settings.pch_dir)
 
 
-def run_worker(settings: Settings, n: int, isolate: bool, stop=None) -> None:
+def _die_with_parent(parent: int) -> None:
+    """Make sure a worker never outlives the server that started it.
+
+    An orphaned worker keeps judging into the same boxes as the next server's
+    workers, and two judges in one box wreck each other's runs. Linux can
+    signal us the moment the parent dies; the pid check in the loop covers the
+    rest.
+    """
+    try:
+        import ctypes
+        libc = ctypes.CDLL("libc.so.6", use_errno=True)
+        libc.prctl(1, signal.SIGTERM)  # PR_SET_PDEATHSIG
+    except (OSError, AttributeError):
+        pass
+    if os.getppid() != parent:  # it already died while we were starting
+        raise SystemExit(0)
+
+
+def lock_box(settings: Settings, n: int):
+    """Hold worker-N's box for as long as this process lives (released on exit)."""
+    work = settings.boxes_dir / f"worker-{n}"
+    work.mkdir(parents=True, exist_ok=True)
+    work.chmod(0o711)
+    handle = open(work / "lock", "w")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        raise SystemExit(f"worker-{n}'s box is in use by another judge process") from None
+    return handle
+
+
+def run_worker(settings: Settings, n: int, isolate: bool, stop=None, parent: int | None = None) -> None:
     signal.signal(signal.SIGINT, signal.SIG_IGN)  # the parent decides when we stop
+    signal.signal(signal.SIGTERM, lambda *_: os._exit(0))
+    if parent is not None:
+        _die_with_parent(parent)
+    box_lock = lock_box(settings, n)  # noqa: F841 - held until exit
     conn = db.connect(settings.db_path)
     judge = make_judge(settings, n, isolate)
     while stop is None or not stop.is_set():
+        if parent is not None and os.getppid() != parent:
+            break
         sub_id = claim(conn)
         if sub_id is None:
             time.sleep(POLL_SECONDS)
@@ -95,6 +134,8 @@ def run_worker(settings: Settings, n: int, isolate: bool, stop=None) -> None:
 
 def drain(settings: Settings, n: int = 0) -> int:
     """Judge everything pending in this process, then return (tests, CLI)."""
+    languages.prepare_pch(settings.pch_dir, log=lambda _: None)
+    box_lock = lock_box(settings, n)  # noqa: F841 - held until we return
     conn = db.connect(settings.db_path)
     judge = make_judge(settings, n, network_isolation_available())
     count = 0
@@ -112,11 +153,12 @@ class WorkerPool:
         self.stop = ctx.Event()
         isolate = network_isolation_available()
         self.isolated = isolate
-        self.procs = [ctx.Process(target=run_worker, args=(settings, n, isolate, self.stop),
+        self.procs = [ctx.Process(target=run_worker, args=(settings, n, isolate, self.stop, os.getpid()),
                                   name=f"outpost-judge-{n}", daemon=True)
                       for n in range(count)]
 
     def start(self) -> None:
+        languages.prepare_pch(self.settings.pch_dir)
         conn = db.connect(self.settings.db_path)
         requeue_stale(conn)
         conn.close()

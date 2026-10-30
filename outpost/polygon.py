@@ -350,7 +350,7 @@ def _run_main(info: dict, spec: ProblemSpec, missing_ans: list[int], settings: S
     work = settings.boxes_dir / f"import-{os.getpid()}"
     sandbox = Sandbox(work / "box", uid=settings.sandbox_uid_base + 999,
                       isolate_network=network_isolation_available())
-    judge = Judge(sandbox, work / "io")
+    judge = Judge(sandbox, work / "io", pch_dir=settings.pch_dir)
     try:
         ok, out, run = judge.compile(lang, src.read_text(encoding="utf-8", errors="replace"))
         if not ok:

@@ -43,6 +43,10 @@ class Settings:
         return self.data_dir / "boxes"
 
     @property
+    def pch_dir(self) -> Path:
+        return self.data_dir / "pch"
+
+    @property
     def uploads_dir(self) -> Path:
         return self.data_dir / "uploads"
 

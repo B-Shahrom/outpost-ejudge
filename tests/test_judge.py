@@ -126,3 +126,27 @@ def test_icpc_mode_stops_at_first_failure(settings, problems, conn):
     assert out.verdict == "wrong_answer" and out.failed_test == 5
     assert [t.test for t in out.tests] == [1, 2, 3, 4, 5]
     assert isinstance(j, Judge)
+
+
+def test_two_judges_cannot_share_a_box(settings):
+    held = worker.lock_box(settings, 9)
+    with pytest.raises(SystemExit, match="in use"):
+        worker.lock_box(settings, 9)
+    held.close()
+    worker.lock_box(settings, 9).close()  # free again once released
+
+
+def test_precompiled_header_is_used(settings, tmp_path):
+    from outpost import languages
+    pch = languages.prepare_pch(settings.pch_dir, log=lambda _: None)
+    assert pch and (pch / "bits" / "stdc++.h.gch").exists()
+    j = worker.make_judge(settings, 6, False)
+    # -H lists every header g++ opens; "!" marks a precompiled one it used.
+    probe = AB + "\n"
+    ok, _, _ = j.compile(languages.get("cpp"), probe)
+    assert ok
+    import subprocess
+    out = subprocess.run(["g++", "-I", str(pch), *languages.get("cpp").compile[1:-3], "-H", "-fsyntax-only",
+                          "-x", "c++", "-"], input=probe, capture_output=True, text=True).stderr
+    assert out.lstrip().startswith("! "), out[:200]
+    j.sb.clean()

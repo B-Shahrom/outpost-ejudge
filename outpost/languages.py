@@ -6,7 +6,9 @@ filters line up with the platform.
 
 from __future__ import annotations
 
+import os
 import shutil
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -60,6 +62,44 @@ LANGUAGES: dict[str, Language] = {
         ),
     ]
 }
+
+
+def prepare_pch(pch_dir: Path, log=print) -> Path | None:
+    """Precompile ``<bits/stdc++.h>`` for the C++ flags, once per g++ version.
+
+    Nearly every submission starts with that header, and parsing it is most of
+    a compile (about 2.5 s of 3 on a laptop, 0.7 s with the precompiled one).
+    g++ picks ``<dir>/bits/stdc++.h.gch`` up automatically when ``-I <dir>``
+    comes first and the flags match; if anything doesn't match it silently
+    parses the header as usual, so this can only make compiles faster.
+    """
+    cpp = LANGUAGES["cpp"]
+    if not shutil.which("g++"):
+        return None
+    flags = [a for a in cpp.compile[1:] if a not in ("-o", "main", "main.cpp")]
+    version = subprocess.run(["g++", "--version"], capture_output=True, text=True).stdout.split("\n")[0]
+    stamp_text = version + "\n" + " ".join(flags)
+    gch = pch_dir / "bits" / "stdc++.h.gch"
+    stamp = pch_dir / "stamp"
+    if gch.exists() and stamp.exists() and stamp.read_text() == stamp_text:
+        return pch_dir
+    log("Preparing the C++ precompiled header (once per g++ version, ~10 s)…")
+    gch.parent.mkdir(parents=True, exist_ok=True)
+    wrapper = pch_dir / "pch.h"
+    wrapper.write_text("#include <bits/stdc++.h>\n")
+    tmp = gch.with_suffix(".tmp")
+    res = subprocess.run(["g++", *flags, "-x", "c++-header", str(wrapper), "-o", str(tmp)],
+                         capture_output=True, text=True)
+    if res.returncode != 0:
+        log("  could not build it (compiles will just be slower): " + res.stderr[-300:])
+        return None
+    os.replace(tmp, gch)
+    stamp.write_text(stamp_text)
+    # Sandboxed compiles run as other uids and must be able to read it.
+    for d in (pch_dir, gch.parent):
+        d.chmod(0o755)
+    gch.chmod(0o644)
+    return pch_dir
 
 
 def get(lang_id: str) -> Language:

@@ -89,9 +89,10 @@ class Outcome:
 
 
 class Judge:
-    def __init__(self, sandbox: Sandbox, io_dir: Path):
+    def __init__(self, sandbox: Sandbox, io_dir: Path, pch_dir: Path | None = None):
         self.sb = sandbox
         self.io = io_dir
+        self.pch_dir = pch_dir  # precompiled <bits/stdc++.h>, see languages.prepare_pch
 
     # -- setup ------------------------------------------------------------
     def _reset_io(self) -> None:
@@ -119,6 +120,8 @@ class Judge:
                 return self._python_syntax_check(src, lang, run)
             return True, "", run
         argv = [a if a != lang.source_name else name for a in lang.compile]
+        if lang.id == "cpp" and self.pch_dir and (self.pch_dir / "bits" / "stdc++.h.gch").exists():
+            argv[1:1] = ["-I", str(self.pch_dir)]
         log = self.io / "compile.txt"
         res = self.sb.run(argv, Limits(address_space=lang.address_space, **COMPILE_LIMITS),
                           stderr_path=log)

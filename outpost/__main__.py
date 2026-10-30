@@ -27,6 +27,7 @@ def cmd_serve(args, settings) -> int:
     settings = dataclasses.replace(settings, host=args.host or settings.host,
                                    port=args.port or settings.port)
     settings.ensure_dirs()
+    lock = _lock_data_dir(settings)  # noqa: F841 - held while serving
     db.init(settings.db_path)
     conn = db.connect(settings.db_path)
     if not db.one(conn, "SELECT 1 FROM users WHERE is_admin=1"):
@@ -45,6 +46,25 @@ def cmd_serve(args, settings) -> int:
     finally:
         pool.shutdown()
     return 0
+
+
+def _lock_data_dir(settings):
+    """One server per data directory: a second one would share judge boxes."""
+    import fcntl
+    import os
+    handle = open(settings.data_dir / "serve.lock", "a+")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        handle.seek(0)
+        pid = handle.read().strip() or "?"
+        raise SystemExit(f"Outpost is already running on {settings.data_dir} (pid {pid}). "
+                         f"Stop it first, or use another OUTPOST_DATA.") from None
+    handle.seek(0)
+    handle.truncate()
+    handle.write(str(os.getpid()))
+    handle.flush()
+    return handle
 
 
 def cmd_admin(args, settings) -> int:

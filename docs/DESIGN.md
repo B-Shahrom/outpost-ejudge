@@ -63,8 +63,24 @@ its Wi-Fi**. The laptop is the server, the judge and the scoreboard.
   to do otherwise.
 - **One active session per contestant.** Signing in elsewhere ends the old
   session. Admins are exempt.
+- **One server per data directory.** `serve` holds `serve.lock`, every worker
+  holds its box's lock and exits when its parent dies (even after `kill -9`).
+  Workers that outlived a server once kept judging into the new server's boxes
+  and turned correct runs into compilation errors.
+- **Precompiled `<bits/stdc++.h>`** is built at start-up, once per g++ version.
+  It cuts a typical compile from about 2.5 s to 0.7 s, which roughly triples
+  judging throughput.
 - **Plain passwords are never stored.** Generated passwords live in memory
   until the admin prints the slips and clicks "forget".
+
+## Load test
+
+`scripts/loadtest.py` drives a running server with simulated contestants and
+checks every verdict. On a 4-core machine with 3 workers, 60 contestants
+submitting every ~6 s for 3 minutes (724 runs, much busier than a real room)
+gave 0 server errors, every verdict as expected, page p95 under 60 ms
+(sign-in, which hashes the password, about 0.5 s), and the queue drained 23 s
+after the last submission.
 
 ## Roadmap
 
