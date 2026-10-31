@@ -28,6 +28,27 @@ def test_second_server_on_the_network_takes_the_next_name():
         second.close()
 
 
+def test_hostname_held_by_another_device_is_not_taken():
+    # Something that isn't Outpost (a printer, another service) already
+    # answers for the name: only the hostname is shared, not the service.
+    import socket
+    from zeroconf import IPVersion, ServiceInfo, Zeroconf
+    other = Zeroconf(ip_version=IPVersion.V4Only)
+    info = ServiceInfo("_ipp._tcp.local.", "Printer._ipp._tcp.local.",
+                       addresses=[socket.inet_aton("127.0.0.1")], port=631,
+                       server="outpost-t3.local.")
+    other.register_service(info)
+    try:
+        a = mdns.announce("127.0.0.1", 8000, "outpost-t3")
+        try:
+            assert a.hostname == "outpost-t3-2.local"
+        finally:
+            a.close()
+    finally:
+        other.unregister_service(info)
+        other.close()
+
+
 def test_off_in_containers_unless_asked(monkeypatch):
     from outpost import config
     monkeypatch.setattr(config, "in_container", lambda: True)

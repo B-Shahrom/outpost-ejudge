@@ -11,6 +11,9 @@
  *     <exit code or -1> <signal or 0> <user us> <system us> <peak RSS KB>
  * The program never sees FD: it is closed before exec, and this process is
  * made non-dumpable so the program (same uid) can't reach it via /proc.
+ *
+ * PROGRAM runs with <this launcher's path>.nodump.so preloaded (nodump.c), so
+ * a crash costs it nothing extra: no core dump, no kernel crash report.
  */
 #include <errno.h>
 #include <stdio.h>
@@ -29,7 +32,10 @@ int main(int argc, char **argv) {
     if (pid < 0)
         return 121;
     if (pid == 0) {
+        char so[4096];
         close(fd);
+        if (snprintf(so, sizeof so, "%s.nodump.so", argv[0]) < (int)sizeof so)
+            setenv("LD_PRELOAD", so, 1);
         execvp(argv[2], argv + 2);
         _exit(127); /* like a shell: no such program */
     }

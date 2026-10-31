@@ -93,6 +93,9 @@ def _enter_jail(root: str, writable: list[str], readonly: list[str]) -> None:
 # limit. The process often dies with little resident memory, so peak RSS alone
 # would call these runtime errors.
 _OOM_MARKERS = (b"std::bad_alloc", b"MemoryError", b"OutOfMemoryError", b"Cannot allocate memory")
+# Signals nodump.c turns into _exit(128 + signal); read back as the signal.
+_CRASH_SIGNALS = {signal.SIGSEGV, signal.SIGBUS, signal.SIGFPE, signal.SIGILL, signal.SIGABRT,
+                  signal.SIGTRAP, signal.SIGSYS}
 
 
 @dataclass
@@ -139,15 +142,20 @@ class Running:
 
 
 def build_launcher(runtime_dir: Path, log=lambda _: None) -> Path | None:
-    """Compile launcher.c into ``runtime_dir`` once (rebuilt when the source changes)."""
+    """Compile launcher.c into ``runtime_dir`` once (rebuilt when the source changes).
+
+    nodump.c is built next to it as ``<launcher>.nodump.so``, which the
+    launcher preloads into every program; the launcher is built last, so its
+    presence means both are there.
+    """
     import fcntl
     import hashlib
     import shutil
-    src = Path(__file__).with_name("launcher.c")
+    src, nodump = Path(__file__).with_name("launcher.c"), Path(__file__).with_name("nodump.c")
     cc = shutil.which("gcc") or shutil.which("cc") or shutil.which("g++")
-    if cc is None or not src.exists():
+    if cc is None or not src.exists() or not nodump.exists():
         return None
-    digest = hashlib.sha256(src.read_bytes()).hexdigest()[:16]
+    digest = hashlib.sha256(src.read_bytes() + nodump.read_bytes()).hexdigest()[:16]
     exe = runtime_dir / f"outpost-launch-{digest}"
     if exe.exists():
         return exe
@@ -158,14 +166,16 @@ def build_launcher(runtime_dir: Path, log=lambda _: None) -> Path | None:
         if exe.exists():
             return exe
         tmp = runtime_dir / f".launch.{os.getpid()}.tmp"
-        argv = [cc, "-O2", "-o", str(tmp), "-x", "c", str(src)]
-        res = subprocess.run(argv, capture_output=True, text=True)
-        if res.returncode != 0:
-            log("could not build the launcher (memory figures will include the judge's own): "
-                + res.stderr[-300:])
-            return None
-        tmp.chmod(0o755)
-        os.replace(tmp, exe)
+        for argv, out in (([cc, "-O2", "-shared", "-fPIC", "-o", str(tmp), "-x", "c", str(nodump)],
+                           Path(f"{exe}.nodump.so")),
+                          ([cc, "-O2", "-o", str(tmp), "-x", "c", str(src)], exe)):
+            res = subprocess.run(argv, capture_output=True, text=True)
+            if res.returncode != 0:
+                log("could not build the launcher (memory figures will include the judge's own): "
+                    + res.stderr[-300:])
+                return None
+            tmp.chmod(0o755)
+            os.replace(tmp, out)
     return exe
 
 
@@ -366,6 +376,8 @@ def processes_of(uid: int) -> list[int]:
     for entry in os.scandir("/proc"):
         if entry.name.isdigit():
             try:
+                # Still the run's uid when it is non-dumpable (nodump.c): only
+                # the files inside /proc/<pid> turn root's, not the directory.
                 if entry.stat().st_uid == uid:
                     out.append(int(entry.name))
             except OSError:
@@ -444,6 +456,8 @@ def _classify(r: Running, status: int, usage) -> RunResult:
     report = _read_report(r.report_fd)
     if report is not None:  # the program itself, measured by the launcher
         code, sig, cpu_ms, mem_kb = report
+        if code is not None and code - 128 in _CRASH_SIGNALS:  # nodump.c's way of crashing
+            code, sig = None, code - 128
     else:  # no launcher, or it was killed (wall-clock limit) before reporting
         cpu_ms = int((usage.ru_utime + usage.ru_stime) * 1000)
         mem_kb = int(usage.ru_maxrss)

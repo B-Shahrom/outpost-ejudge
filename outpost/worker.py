@@ -25,6 +25,7 @@ from .judge import JUDGE_ERROR, Judge, ProblemSpec
 from .sandbox import Sandbox, build_launcher, jail_available, network_isolation_available
 
 POLL_SECONDS = 0.25
+NICE = 10  # judges' CPU priority below the web server's (see run_worker)
 
 
 def spec_for(row: sqlite3.Row, settings: Settings) -> ProblemSpec:
@@ -164,6 +165,9 @@ def run_worker(settings: Settings, n: int, isolate: bool, jail: bool, stop=None,
     signal.signal(signal.SIGTERM, lambda *_: os._exit(0))
     if parent is not None:
         _die_with_parent(parent)
+        # Judging takes every core it gets; the web server on the same laptop
+        # must still answer at once. Verdicts don't change: limits are CPU time.
+        os.nice(NICE)
     box_lock = lock_box(settings, n)  # noqa: F841 - held until exit
     conn = db.connect(settings.db_path)
     judge = make_judge(settings, n, isolate, jail)

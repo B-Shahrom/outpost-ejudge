@@ -79,6 +79,30 @@ its Wi-Fi**. The laptop is the server, the judge and the scoreboard.
   the fd is closed before exec, and the launcher is non-dumpable.
 - **Plain passwords are never stored.** Generated passwords live in memory
   until the admin prints the slips and clicks "forget".
+- **A crash costs nothing extra** (2026-10-31). Load testing in Docker
+  Desktop turned an instant null dereference into time limit exceeded (1
+  run in ~115, charged 1250 ms). The kernel was doing slow work on the
+  crashing program's CPU time: piping a core dump to a helper (RLIMIT_CORE
+  doesn't apply to pipes; Ubuntu's apport and systemd-coredump pipe too),
+  and, with Docker Desktop's `print-fatal-signals=1`, writing a register
+  dump to its slow console. The launcher now preloads `nodump.c` into
+  every program. It makes the program non-dumpable and ends a crash signal
+  with `_exit(128 + sig)`, which the sandbox reads back as that signal, so
+  verdicts and notes are unchanged. Under load a crash now costs what a
+  clean exit does (median 0 ms, before 6–8 ms with a tail past 800 ms).
+  `selftest` checks it.
+- **Judges run at nice 10** (2026-10-31). Workers take every core, and the
+  web server on the same laptop lost to them: with 11 judges on 12 cores,
+  page p95 reached 1.5–2 s under the load test. Verdicts don't change,
+  because limits are CPU time. Remote judges keep normal priority: they
+  have no web server to share with.
+- **mDNS checks the hostname, not only the service name.** zeroconf's own
+  probe only notices another `Outpost …` service, so a printer or anything
+  else answering `outpost.local` would have been shadowed. Each candidate
+  name is now looked up first, for 2 s per name tried: a server that
+  announced itself within the last second holds its answer until the second
+  is over (RFC 6762 §14), so two Outposts started together missed each
+  other with a 1 s lookup.
 
 ## Load test
 

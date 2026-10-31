@@ -36,9 +36,13 @@ def announce(ip: str, port: int, name: str = "outpost", tries: int = 5) -> Annou
 
     If another machine already holds the name (two Outposts on one network),
     the next free one is taken: ``outpost-2.local``, ``outpost-3.local``, ...
+
+    A name counts as held when anything answers for the hostname, not only
+    another Outpost: zeroconf's own probe checks just the service name.
     """
     try:
-        from zeroconf import IPVersion, NonUniqueNameException, ServiceInfo, Zeroconf
+        from zeroconf import (AddressResolver, IPVersion, NonUniqueNameException,
+                              ServiceInfo, Zeroconf)
     except ImportError:
         return None
     try:
@@ -47,6 +51,10 @@ def announce(ip: str, port: int, name: str = "outpost", tries: int = 5) -> Annou
         return None
     for n in range(1, tries + 1):
         host = name if n == 1 else f"{name}-{n}"
+        # 2 s: a responder that announced itself within the last second holds
+        # its answer until that second is over (RFC 6762 section 14).
+        if AddressResolver(f"{host}.local.").request(zc, 2000):
+            continue
         info = ServiceInfo(
             SERVICE, f"Outpost {host}.{SERVICE}", addresses=[socket.inet_aton(ip)], port=port,
             properties={"path": "/"}, server=f"{host}.local.")

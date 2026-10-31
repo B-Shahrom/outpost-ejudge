@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import signal
 
 import pytest
 
@@ -252,6 +253,57 @@ def test_program_cannot_forge_the_launchers_report(settings, tmp_path):
         res = sb.run(["python3", "forge.py"], Limits(time_ms=20000, memory_mb=None), stdout=f)
     assert "wrote" not in out.read_text() and "proc fd" not in out.read_text(), out.read_text()
     assert res.time_ms > 100, res   # the real CPU time, not the forged 0 ms
+    sb.clean()
+
+
+@pytest.mark.skipif(os.geteuid() != 0, reason="a separate uid needs root")
+def test_crashes_are_never_core_dumped(settings, tmp_path):
+    # With core_pattern piped to a helper (apport, systemd-coredump, Docker
+    # Desktop) RLIMIT_CORE is ignored and the dump is charged to the program:
+    # a null dereference once came back time_limit_exceeded under load.
+    sb = worker.make_judge(settings, 16, *worker.protections(settings)).sb
+    sb.prepare()
+    probe = sb.box / "probe.py"
+    probe.write_text(
+        "import ctypes, subprocess, sys\n"
+        "print('self', ctypes.CDLL(None).prctl(3, 0, 0, 0, 0))\n"  # PR_GET_DUMPABLE
+        "if len(sys.argv) == 1: subprocess.run([sys.executable, 'probe.py', 'child'])\n")
+    sb.give(probe)
+    out = tmp_path / "out"
+    with open(out, "wb") as f:
+        res = sb.run(["python3", "probe.py"], Limits(time_ms=5000, memory_mb=None), stdout=f)
+    assert res.ok, res
+    assert out.read_text().split() == ["self", "0", "self", "0"], out.read_text()  # and what it execs
+    crash = sb.run(["python3", "-c", "import os, signal; os.kill(os.getpid(), signal.SIGSEGV)"],
+                   Limits(time_ms=5000, memory_mb=None))
+    assert crash.status == "re" and crash.signal == signal.SIGSEGV, crash
+    sb.clean()
+
+
+@pytest.mark.skipif(os.geteuid() != 0, reason="a separate uid needs root")
+def test_crashes_still_read_as_their_signal(settings):
+    # nodump.c ends a crash with _exit(128 + signal) so the kernel doesn't
+    # print a register dump on the program's time; the judge must still see
+    # the signal itself.
+    import subprocess
+    sb = worker.make_judge(settings, 17, *worker.protections(settings)).sb
+    crashes = {
+        "null": ("int main(){volatile int*p=0;return *p;}", signal.SIGSEGV),
+        "divide": ("int main(){volatile int z=0;return 1/z;}", signal.SIGFPE),
+        "abort": ("#include <cstdlib>\nint main(){std::abort();}", signal.SIGABRT),
+        "recursion": ("int f(volatile int n){volatile char b[4096];b[0]=n;return f(n+1)+b[0];}"
+                      "int main(){return f(0);}", signal.SIGSEGV),
+    }
+    for name, (src, sig) in crashes.items():
+        sb.prepare()
+        (sb.box / "main.cpp").write_text(src)
+        subprocess.run(["g++", "-O0", "-o", str(sb.box / "main"), str(sb.box / "main.cpp")], check=True)
+        sb.give(sb.box / "main")
+        res = sb.run(["./main"], Limits(time_ms=2000, memory_mb=64))
+        assert (res.status, res.signal, res.exit_code) == ("re", sig, None), (name, res)
+        assert res.note == f"killed by signal {sig} ({signal.Signals(sig).name})", (name, res.note)
+    ok = sb.run(["python3", "-c", "raise SystemExit(3)"], Limits(time_ms=5000, memory_mb=None))
+    assert (ok.status, ok.exit_code, ok.signal) == ("re", 3, None), ok  # plain exit codes untouched
     sb.clean()
 
 

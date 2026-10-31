@@ -34,6 +34,7 @@ CASES = [
 ]
 NETWORK_PROBE = ("import socket,sys\ns=socket.socket();s.settimeout(3)\n"
                  "try:\n s.connect(('1.1.1.1',53))\n print('CONNECTED')\nexcept OSError:\n print('blocked')")
+DUMP_PROBE = "import ctypes\nprint(ctypes.CDLL(None).prctl(3, 0, 0, 0, 0))"  # PR_GET_DUMPABLE
 
 
 def run(out=print) -> int:
@@ -94,6 +95,13 @@ def run(out=print) -> int:
                "isolated" if text == "blocked" else
                (f"probe said {text!r}" + ("" if isolated else
                 " (no network namespaces: run as root, or the container needs CAP_SYS_ADMIN)")))
+        probe.write_text(DUMP_PROBE)
+        with open(net_out, "wb") as f:
+            judge.sb.run(["python3", "probe.py"], _limits(), stdout=f)
+        dumpable = net_out.read_text().strip()
+        report("a crash isn't core-dumped (or charged for one)", dumpable == "0",
+               "never dumped" if dumpable == "0" else
+               "the launcher couldn't be built (is gcc installed?); memory figures are off too")
         look = judge.sb.run(["test", "-e", str(settings.problems_dir)], _limits())
         report("submissions can't see the judge's files", look.exit_code != 0,
                "hidden (filesystem jail)" if look.exit_code != 0 else
