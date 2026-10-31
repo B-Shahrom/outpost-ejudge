@@ -15,6 +15,7 @@ import socket
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -35,6 +36,9 @@ from .judge import VERDICTS
 HERE = Path(__file__).parent
 MAX_SOURCE_BYTES = 128 * 1024
 SUBMIT_COOLDOWN_SECONDS = 5
+# A cached board is recomputed at least this often, for changes the server
+# can't see happen (users imported from the command line).
+BOARD_MAX_AGE = 30
 
 VERDICT_LABELS = {
     "accepted": "Accepted", "wrong_answer": "Wrong answer",
@@ -82,6 +86,25 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
     # New accounts with their plain passwords, kept in memory only (never in
     # the database) until the admin has printed the slips.
     app.state.batches: dict[str, list[dict]] = {}
+    # Standings, computed once per change instead of once per page view: each
+    # computation reads all of the contest's submissions, and under load the
+    # pages piled up until every server thread waited on one (33 s pages).
+    app.state.edits = 0  # bumped by every admin change: a team renamed, a problem added
+    boards: dict[tuple, tuple[tuple, float, dict]] = {}
+    boards_lock = threading.Lock()
+
+    def cached_standings(c: sqlite3.Connection, contest: sqlite3.Row, live: bool,
+                         division: str | None) -> dict:
+        version = (tuple(contest), scoring.is_frozen(contest, db.now()),
+                   scoring.board_version(c, contest["id"]), app.state.edits)
+        key = (contest["id"], live, division)
+        with boards_lock:  # one computation at a time; requests arriving meanwhile reuse it
+            hit = boards.get(key)
+            if hit and hit[0] == version and time.monotonic() - hit[1] < BOARD_MAX_AGE:
+                return hit[2]
+            board = scoring.standings(c, contest, live=live, division=division)
+            boards[key] = (version, time.monotonic(), board)
+            return board
 
     # -- plumbing ------------------------------------------------------------
     def conn(request: Request) -> sqlite3.Connection:
@@ -98,6 +121,8 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
             c = getattr(request.state, "db", None)
             if c is not None:
                 c.close()
+            if request.method == "POST" and request.url.path.startswith("/admin"):
+                app.state.edits += 1
 
     @app.exception_handler(Redirect)
     async def _redirect(_req: Request, exc: Redirect):
@@ -395,7 +420,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
         contest = contest_by_code(c, code, u)
         if not u["is_admin"] and not contest["public_standings"]:
             return render(request, "standings.html", c, contest=contest, board=None, division=None)
-        board = scoring.standings(c, contest, live=bool(u["is_admin"]), division=division or None)
+        board = cached_standings(c, contest, bool(u["is_admin"]), division or None)
         return render(request, "standings.html", c, contest=contest, board=board,
                       division=division, projector=request.query_params.get("projector"))
 

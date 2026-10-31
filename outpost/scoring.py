@@ -62,6 +62,15 @@ def is_frozen(contest: sqlite3.Row, now: float) -> bool:
     return now >= contest["end_at"] - contest["freeze_minutes"] * 60
 
 
+def board_version(conn: sqlite3.Connection, contest_id: int) -> tuple:
+    """Changes whenever a submission of the contest is added, judged, rejudged
+    or removed. Read from the standings' own index, so it costs well under a
+    millisecond where the board itself takes several."""
+    return tuple(conn.execute("""
+        SELECT count(*), max(id), max(judged_at), total(status <> 'done')
+        FROM submissions INDEXED BY submissions_board WHERE contest_id=?""", (contest_id,)).fetchone())
+
+
 def standings(conn: sqlite3.Connection, contest: sqlite3.Row, *, live: bool,
               division: str | None = None, now: float | None = None,
               force_frozen: bool = False) -> dict:

@@ -95,6 +95,11 @@ CREATE TABLE IF NOT EXISTS submissions (
 );
 CREATE INDEX IF NOT EXISTS submissions_queue ON submissions(status, id);
 CREATE INDEX IF NOT EXISTS submissions_contest ON submissions(contest_id, user_id);
+-- Everything the standings read, so they never touch the rows themselves:
+-- a row's source comes before these columns and, past ~4 KB, spills into
+-- overflow pages that a scan would have to walk.
+CREATE INDEX IF NOT EXISTS submissions_board ON submissions(contest_id, submitted_at, id, user_id,
+    problem_id, status, verdict, score, max_score, judged_at);
 
 CREATE TABLE IF NOT EXISTS balloons (
     contest_id   INTEGER NOT NULL REFERENCES contests(id) ON DELETE CASCADE,

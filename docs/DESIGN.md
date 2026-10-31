@@ -96,6 +96,26 @@ its Wi-Fi**. The laptop is the server, the judge and the scoreboard.
   page p95 reached 1.5–2 s under the load test. Verdicts don't change,
   because limits are CPU time. Remote judges keep normal priority: they
   have no web server to share with.
+- **Standings are computed once per change** (2026-10-31). Every board
+  read all of the contest's submissions, and every contestant refreshes
+  it, so the cost grew with the contest: by ~3,000 submissions, standings
+  pages took 33 s under the load test, and even `/healthz` waited 14 s,
+  because all server threads were stuck in that one query (py-spy: 92% of
+  thread time). Two changes:
+  - a covering index, `submissions_board`, answers the query without
+    reading rows. In the schema a row's `source` comes before the columns
+    the board needs, so a real 4 KB source made the scan walk overflow
+    pages: 16 ms became 4 ms, with no sort;
+  - the web server keeps the computed board, keyed by a fingerprint of the
+    contest's submissions (count, newest id, newest judging, unjudged
+    count, read from that index), the contest row, the freeze state, and a
+    counter bumped by every admin change. Results, rejudges and admin edits
+    show at once; changes made outside the server (CLI user imports) within
+    30 s. Concurrent requests wait for one computation instead of each
+    making their own.
+
+  With ~4,200 submissions, standings p95 went from seconds to 47 ms and
+  every other page's p95 to ~22 ms.
 - **mDNS checks the hostname, not only the service name.** zeroconf's own
   probe only notices another `Outpost …` service, so a printer or anything
   else answering `outpost.local` would have been shadowed. Each candidate

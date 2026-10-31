@@ -113,6 +113,37 @@ def test_icpc_contest_end_to_end(app, settings, problems):
     assert csv_text.splitlines()[1].startswith("1,ann,")
 
 
+def test_standings_are_computed_once_per_change(app, settings, problems, monkeypatch):
+    from outpost import scoring
+    computed = []
+    real = scoring.standings
+    monkeypatch.setattr(scoring, "standings", lambda *a, **k: computed.append(1) or real(*a, **k))
+    admin = client(app, "jury", "jurypass")
+    make_contest(admin, "cache1", "icpc")
+    add_problem(admin, "cache1", problems["a-plus-b"])
+    make_users(admin, "cara, Cara C, , pw-cara")
+    cara = client(app, "cara", "pw-cara")
+
+    def solved() -> int:
+        page = cara.get("/c/cache1/standings").text
+        return page.count('class="cell-first"') + page.count('class="cell-ok"')
+
+    assert solved() == 0
+    n = len(computed)
+    assert solved() == 0 and cara.get("/c/cache1/standings").status_code == 200
+    assert len(computed) == n                       # nothing changed: the board is reused
+    cara.post("/c/cache1/submit", data={"label": "A", "language": "cpp", "source": AB})
+    worker.drain(settings)
+    assert solved() == 1                            # a judged submission shows at once
+    sid = cara.get("/api/c/cache1/my-submissions").json()[0]["id"]
+    admin.post("/admin/rejudge", data={"id": sid})
+    assert solved() == 0                            # and so does a rejudge (pending again)
+    worker.drain(settings)
+    assert solved() == 1
+    add_problem(admin, "cache1", problems["guess"])
+    assert ">B</th>" in cara.get("/c/cache1/standings").text  # admin changes show at once
+
+
 def test_single_session(app):
     admin = client(app, "jury", "jurypass")
     make_users(admin, "solo, Solo, , pw-solo")
