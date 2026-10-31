@@ -19,6 +19,7 @@ that already use the problem keep working after a re-import).
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import shlex
@@ -43,6 +44,43 @@ IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".bmp", ".webp"}
 
 class ImportError_(Exception):
     pass
+
+
+def pdf_problem(path: Path) -> str | None:
+    """Why ``path`` is not a PDF that opens (it doesn't parse, or has no pages); None if it is fine."""
+    from pypdf import PdfReader
+    try:
+        reader = PdfReader(path)
+        for page in reader.pages:
+            page.mediabox
+        pages = len(reader.pages)
+    except Exception as e:  # pypdf raises many kinds on damaged files
+        return f"it doesn't parse ({type(e).__name__}: {e})"
+    return None if pages else "it has no pages"
+
+
+@functools.lru_cache(maxsize=4096)
+def _pdf_opens(path: str, mtime_ns: int, size: int) -> bool:
+    return pdf_problem(Path(path)) is None
+
+
+def pdf_opens(path: Path) -> bool:
+    """Whether ``path`` is a PDF that opens; parsed once per file version, then cached."""
+    try:
+        st = path.stat()
+    except OSError:
+        return False
+    return path.is_file() and _pdf_opens(str(path), st.st_mtime_ns, st.st_size)
+
+
+def drop_broken_pdf(path: Path, shown_as: str, log: Log) -> bool:
+    """Delete ``path`` if it is a PDF that doesn't open, saying so in the log; True if it is kept."""
+    why = pdf_problem(path)
+    if why is None:
+        return True
+    log(f"WARNING statement PDF {shown_as} dropped: {why}")
+    path.unlink(missing_ok=True)
+    return False
 
 
 def safe_extract(zip_path: Path, dest: Path) -> None:
@@ -157,8 +195,8 @@ def parse(root: Path) -> dict:
     }
 
 
-def read_statements(root: Path, info: dict, dest: Path, slug: str) -> dict:
-    """Convert every language's statement to HTML; copy its images and PDF."""
+def read_statements(root: Path, info: dict, dest: Path, slug: str, log: Log = print) -> dict:
+    """Convert every language's statement to HTML; copy its images and PDF (if it opens)."""
     out: dict[str, dict] = {}
     base = root / "statements"
     langs = sorted(d.name for d in base.iterdir() if d.is_dir() and not d.name.startswith(".")) \
@@ -189,6 +227,8 @@ def read_statements(root: Path, info: dict, dest: Path, slug: str) -> dict:
         pdf = info["pdfs"].get(lang)
         if pdf and pdf.exists():
             shutil.copy2(pdf, target / "problem.pdf")
+            shown = pdf.relative_to(root).as_posix() if pdf.is_relative_to(root) else pdf.name
+            drop_broken_pdf(target / "problem.pdf", shown, log)
 
         def img(name: str, _lang=lang) -> str:
             return f"/problem-files/{slug}/{_lang}/{name}"
@@ -335,7 +375,7 @@ def build(root: Path, dest: Path, settings: Settings, log: Log, verify: bool = T
         keep_source(src, dest / "src" / "interactor.cpp", root)
         interactive = True
 
-    statements = read_statements(root, info, dest, slug)
+    statements = read_statements(root, info, dest, slug, log)
     tests = [{k: t[k] for k in ("index", "group", "points", "sample")} for t in info["tests"]]
     spec = ProblemSpec(dir=dest, time_limit_ms=info["time_limit_ms"],
                        memory_limit_mb=info["memory_limit_mb"], tests=tests, groups=info["groups"],

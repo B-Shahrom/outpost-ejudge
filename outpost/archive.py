@@ -126,6 +126,17 @@ def import_contest(conn: sqlite3.Connection, settings: Settings, archive: Path, 
         shutil.rmtree(work, ignore_errors=True)
 
 
+def _drop_broken_pdfs(problem_dir: Path, statements_json: str, log) -> str:
+    """Archives from older Outposts can carry a PDF that doesn't open: drop it, as an import does."""
+    statements = db.loads(statements_json, {})
+    for lang, st in statements.items():
+        pdf = problem_dir / "statements" / lang / "problem.pdf"
+        if st.get("pdf"):
+            st["pdf"] = pdf.is_file() and polygon.drop_broken_pdf(
+                pdf, f"{problem_dir.name}/statements/{lang}/problem.pdf", log)
+    return db.dumps(statements)
+
+
 def _import_rows(conn, settings, work: Path, data: dict, code: str, copied: list[Path], log) -> str:
     contest = data["contest"]
     problem_ids: dict[str, int] = {}
@@ -142,6 +153,7 @@ def _import_rows(conn, settings, work: Path, data: dict, code: str, copied: list
         shutil.copytree(src_dir, dest)
         copied.append(dest)
         polygon.rebuild_binaries(dest, log)
+        p = {**p, "statements_json": _drop_broken_pdfs(dest, p["statements_json"], log)}
         for name in ("check", "interactor"):
             if (dest / name).exists():
                 (dest / name).chmod(0o700)
