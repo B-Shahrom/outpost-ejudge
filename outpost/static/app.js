@@ -1,5 +1,41 @@
 // Small progressive enhancements; every page works without this file.
 (function () {
+  // Theme switch: Auto (follow the system) -> Light -> Dark. The choice is kept per
+  // browser; the inline script in base.html applies it before the first paint. Every
+  // colour, the code editor's included, comes from CSS tokens, so it applies at once.
+  var themeBtn = document.querySelector("[data-theme-switch]");
+  if (themeBtn) {
+    var THEMES = ["auto", "light", "dark"], NAMES = { auto: "Auto", light: "Light", dark: "Dark" };
+    var stored = function () {
+      var t = null;
+      try { t = localStorage.getItem("outpost-theme"); } catch (e) {}
+      return t === "light" || t === "dark" ? t : "auto";
+    };
+    var current = stored();  // kept here too, so the switch works even if storage throws
+    var apply = function () {
+      if (current === "auto") document.documentElement.removeAttribute("data-theme");
+      else document.documentElement.setAttribute("data-theme", current);
+      var next = THEMES[(THEMES.indexOf(current) + 1) % THEMES.length];
+      themeBtn.textContent = "Theme: " + NAMES[current];
+      themeBtn.setAttribute("aria-label", "Colour theme: " + NAMES[current] +
+        (current === "auto" ? ", follows the system" : "") + ". Switch to " + NAMES[next] + ".");
+    };
+    themeBtn.addEventListener("click", function () {
+      current = THEMES[(THEMES.indexOf(current) + 1) % THEMES.length];
+      try {
+        if (current === "auto") localStorage.removeItem("outpost-theme");
+        else localStorage.setItem("outpost-theme", current);
+      } catch (e) {}
+      apply();
+    });
+    // Another tab changed it.
+    window.addEventListener("storage", function (e) {
+      if (e.key === "outpost-theme" || e.key === null) { current = stored(); apply(); }
+    });
+    apply();
+    themeBtn.hidden = false;
+  }
+
   // Contest clock. The server's time is sent with the page so a contestant's
   // laptop clock being off doesn't matter.
   var timer = document.querySelector("[data-timer]");

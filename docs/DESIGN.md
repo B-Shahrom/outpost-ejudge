@@ -123,6 +123,19 @@ its Wi-Fi**. The laptop is the server, the judge and the scoreboard.
   announced itself within the last second holds its answer until the second
   is over (RFC 6762 §14), so two Outposts started together missed each
   other with a 1 s lookup.
+- **Theme switch** (2026-10-31). The pages followed only the system's
+  light/dark setting, so on a dark laptop light mode was out of reach. A
+  button in the header now cycles Auto → Light → Dark. The choice is kept
+  per browser in `localStorage` (`outpost-theme`) and set as `data-theme` on
+  `<html>` by a one-line script in `<head>`, before the stylesheet, so the
+  first paint already has it. Without JavaScript, or if storage throws, it is
+  Auto, as before. Every colour, the code editor's included, comes from the
+  tokens at the top of `style.css`, so a switch applies at once. CSS can't
+  join a media query and a selector in one rule, so the dark token values
+  are written twice (system-dark-and-not-pinned-light, and pinned-dark);
+  keep them identical. Dark applies on screen only, so anything printed is
+  light, and the statements print view and login slips are pinned light and
+  have no switch.
 
 ## Load test
 

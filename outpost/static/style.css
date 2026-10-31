@@ -3,14 +3,29 @@
   --accent: #2f6fde; --accent-text: #ffffff; --code-bg: #f1f3f6;
   --ok: #1f8a4c; --ok-bg: #e5f5ec; --bad: #c4372f; --bad-bg: #fbe9e7;
   --warn: #9a6400; --warn-bg: #fff4dc; --info-bg: #e8f0fd; --first: #0f6a39;
+  --syn-kw: #7a3db8; --syn-str: #1f7a3a; --syn-num: #b4580c; --syn-com: #6b7685; --syn-def: #1d5fbf; --syn-meta: #9a6400;
   --radius: 8px; --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
+/* Dark: the system prefers it and the page isn't pinned light (the theme switch in the
+   header sets data-theme on <html>), or the page is pinned dark. CSS can't put a media
+   query and a selector in one rule, so the dark values are written twice; keep the two
+   blocks identical. Screen only, so anything printed is light. */
+@media screen and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
     --bg: #111418; --panel: #1a1e24; --text: #e6e9ed; --muted: #98a2b0; --line: #2c323b;
     --accent: #6c9cf0; --accent-text: #0d1117; --code-bg: #20252d;
     --ok: #5dd28e; --ok-bg: #16301f; --bad: #f08a80; --bad-bg: #3a1c1a;
     --warn: #f0c060; --warn-bg: #352a12; --info-bg: #1b2a44; --first: #8ff0b5;
+    --syn-kw: #c79bff; --syn-str: #7fd49a; --syn-num: #f2b75e; --syn-com: #8b95a3; --syn-def: #8db8ff; --syn-meta: #f0c060;
+  }
+}
+@media screen {
+  :root[data-theme="dark"] {
+    --bg: #111418; --panel: #1a1e24; --text: #e6e9ed; --muted: #98a2b0; --line: #2c323b;
+    --accent: #6c9cf0; --accent-text: #0d1117; --code-bg: #20252d;
+    --ok: #5dd28e; --ok-bg: #16301f; --bad: #f08a80; --bad-bg: #3a1c1a;
+    --warn: #f0c060; --warn-bg: #352a12; --info-bg: #1b2a44; --first: #8ff0b5;
+    --syn-kw: #c79bff; --syn-str: #7fd49a; --syn-num: #f2b75e; --syn-com: #8b95a3; --syn-def: #8db8ff; --syn-meta: #f0c060;
   }
 }
 * { box-sizing: border-box; }
@@ -41,6 +56,8 @@ nav.main a.on, nav.main a:hover { background: var(--info-bg); text-decoration: n
   .who { margin-left: auto; }
 }
 .who { display: flex; gap: 10px; align-items: center; font-size: 14px; }
+.theme-switch { padding: 3px 9px; font-size: 13px; color: var(--muted); }
+.theme-switch:hover, .theme-switch:focus-visible { color: var(--text); }
 .timer { font-family: var(--mono); font-weight: 600; padding: 4px 10px; border-radius: 6px;
   background: var(--info-bg); white-space: nowrap; }
 .timer.over { background: var(--bad-bg); color: var(--bad); }
@@ -157,11 +174,8 @@ body.resolver-page #resolver { cursor: pointer; }
 .balloon-key { display: inline-flex; gap: 5px; align-items: center; margin-right: 10px; }
 
 /* code editor (vendored CodeMirror 5), themed from the page's tokens. The selectors are
-   one class stronger than codemirror.css's, which loads after this file. */
-:root { --syn-kw: #7a3db8; --syn-str: #1f7a3a; --syn-num: #b4580c; --syn-com: #6b7685; --syn-def: #1d5fbf; --syn-meta: #9a6400; }
-@media (prefers-color-scheme: dark) {
-  :root { --syn-kw: #c79bff; --syn-str: #7fd49a; --syn-num: #f2b75e; --syn-com: #8b95a3; --syn-def: #8db8ff; --syn-meta: #f0c060; }
-}
+   one class stronger than codemirror.css's, which loads after this file. The --syn-*
+   colours are with the other tokens at the top. */
 .CodeMirror.cm-s-default { height: 380px; border: 1px solid var(--line); border-radius: 6px; font-family: var(--mono);
   font-size: 13.5px; background: var(--bg); color: var(--text); }
 .CodeMirror.cm-s-default .CodeMirror-gutters { background: var(--panel); border-right: 1px solid var(--line); }

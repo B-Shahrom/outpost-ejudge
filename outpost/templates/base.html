@@ -1,9 +1,14 @@
 <!doctype html>
-<html lang="en">
+{# Printable pages set the theme block to "light": light on screen too, and no switch. #}
+{% if false %}{% block theme %}{% endblock %}{% endif %}{% set pinned_theme = self.theme()|trim %}
+<html lang="en"{% if pinned_theme %} data-theme="{{ pinned_theme }}"{% endif %}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}Outpost{% endblock %}</title>
+{% if not pinned_theme %}{# Before the stylesheet, so the first paint already has the chosen theme. #}
+<script>(function(){try{var t=localStorage.getItem("outpost-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}})()</script>
+{% endif %}
 <link rel="stylesheet" href="/static/style.css">
 {% block head %}{% endblock %}
 </head>
@@ -39,6 +44,8 @@
     <form method="post" action="/logout"><button class="link" type="submit">Sign out</button></form>
   </div>
   {% endif %}
+  {% if not pinned_theme %}<button class="theme-switch" type="button" data-theme-switch hidden
+    aria-label="Colour theme: Auto, follows the system. Switch to Light." title="Colour theme">Theme: Auto</button>{% endif %}
 </div></header>
 <main>
 {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}

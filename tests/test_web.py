@@ -400,3 +400,28 @@ def test_problem_page_has_the_offline_editor(app):
                   "/static/vendor/codemirror/codemirror.css"):
         assert asset in page and ann.get(asset).status_code == 200, asset
     assert "https://" not in page.split("<main>")[0]  # nothing from the internet in the head
+
+
+def test_theme_switch(app, problems):
+    head_script = 'localStorage.getItem("outpost-theme")'
+    admin = client(app, "jury", "jurypass")
+    make_contest(admin, "theme1", "icpc")
+    add_problem(admin, "theme1", problems["a-plus-b"], "A")
+    make_users(admin, "themer, Theme Er, , pw-themer")
+    themer = client(app, "themer", "pw-themer")
+    for cl, url in ((themer, "/c/theme1/p/A"), (themer, "/c/theme1/standings"),
+                    (admin, "/admin/contests/theme1")):
+        page = cl.get(url).text
+        head = page.split("</head>")[0]
+        # Applied before the stylesheet, so the first paint has the chosen theme.
+        assert head_script in head and head.index(head_script) < head.index("/static/style.css"), url
+        assert '<html lang="en">' in page, url  # without JavaScript: Auto, as before
+        switch = page.split("data-theme-switch")[1].split(">")[0]
+        assert "hidden" in switch and 'aria-label="Colour theme: Auto' in switch, url
+    # Printable pages stay light whatever the choice, and have no switch.
+    make_users(admin, "themeslip, Theme Slip, ")
+    slips = admin.get("/admin/users").text.split("/admin/slips/")[1].split('"')[0]
+    for url in ("/c/theme1/print", f"/admin/slips/{slips}"):
+        page = admin.get(url).text
+        assert '<html lang="en" data-theme="light">' in page, url
+        assert head_script not in page and "data-theme-switch" not in page, url
