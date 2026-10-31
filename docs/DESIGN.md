@@ -123,6 +123,17 @@ its Wi-Fi**. The laptop is the server, the judge and the scoreboard.
   announced itself within the last second holds its answer until the second
   is over (RFC 6762 §14), so two Outposts started together missed each
   other with a 1 s lookup.
+- **A statement PDF is offered only if it opens** (2026-10-31). The test
+  packages carried a 20-byte placeholder PDF, and the problem page linked to
+  it: the browser couldn't load it. Imports (Polygon packages and contest
+  archives) now open every statement PDF with pypdf and drop one that doesn't
+  parse or has no pages, with a `WARNING statement PDF … dropped: …` line in
+  the import log; the rest of the import goes on. For problems imported
+  before this, the web server checks the file before linking it, serving it
+  or merging it into `statements.pdf`, cached per path, mtime and size, so a
+  page view costs a `stat`. A broken PDF counts as no PDF: the merge needs one
+  that opens for every problem, otherwise it's a 404 and the print view is
+  the way to print (a merge with a problem missing would be worse).
 
 ## Load test
 
@@ -179,7 +190,7 @@ Next:
 - [x] **Printable statements** (done): `/c/<code>/print` puts every problem on
   its own printed page (KaTeX math, examples as a table), in any statement
   language, so it works for packages without PDFs. When every problem has a
-  PDF in that language, `/c/<code>/statements.pdf` merges the packages' own
+  PDF that opens in that language, `/c/<code>/statements.pdf` merges the packages' own
   LaTeX-typeset PDFs (pypdf).
 - [x] **Contest archive** (done): one zip with the contest, its problems
   (tests, statements, checker and interactor *sources*; binaries are rebuilt

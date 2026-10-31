@@ -165,6 +165,20 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
         divisions = db.loads(contest["divisions_json"], [])
         return bool(contest["visible"]) and (not divisions or user["division"] in divisions)
 
+    def statement_pdf(slug: str, lang: str | None) -> Path:
+        return settings.problems_dir / slug / "statements" / (lang or "") / "problem.pdf"
+
+    def pdf_opens(path: Path) -> bool:
+        from . import polygon
+        return polygon.pdf_opens(path)
+
+    def with_pdf(st: dict | None, slug: str, lang: str | None) -> dict | None:
+        """Offer a statement's PDF only if it opens: problems imported before imports checked
+        PDFs can carry a broken one. The check is cached per file version."""
+        if st and st.get("pdf") and not pdf_opens(statement_pdf(slug, lang)):
+            return {**st, "pdf": False}
+        return st
+
     def contest_problems(c, contest, user) -> list[sqlite3.Row]:
         rows = db.all_(c, """
             SELECT p.*, cp.label, cp.position, cp.divisions_json AS cp_divisions
@@ -265,7 +279,7 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
         lang = lang if lang in statements else ("english" if "english" in statements
                                                  else next(iter(statements), None))
         return render(request, "problem.html", c, contest=contest, problems=problems, prob=prob,
-                      st=statements.get(lang) if lang else None, lang=lang,
+                      st=with_pdf(statements.get(lang), prob["slug"], lang) if lang else None, lang=lang,
                       langs=list(statements), languages=[l for l in languages.LANGUAGES.values()
                                                          if l.available()],
                       last_lang=request.session.get("lang", "cpp"))
@@ -287,6 +301,8 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
         path = (base / name).resolve()
         if not path.is_relative_to(base) or not path.is_file():
             raise HTTPException(404)
+        if name == "problem.pdf" and not pdf_opens(path):
+            raise HTTPException(404, "This PDF statement is damaged; use the problem page.")
         return FileResponse(path)
 
     @app.post("/c/{code}/submit")
@@ -335,7 +351,8 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
                 if l not in langs:
                     langs.append(l)
             chosen = lang if lang in st else ("english" if "english" in st else next(iter(st), None))
-            out.append({"p": p, "st": st.get(chosen) if chosen else None, "lang": chosen})
+            out.append({"p": p, "st": with_pdf(st.get(chosen), p["slug"], chosen) if chosen else None,
+                        "lang": chosen})
         return out, langs
 
     @app.get("/c/{code}/print", response_class=HTMLResponse)
@@ -353,21 +370,24 @@ def create_app(settings: Settings, pool=None, mdns_host: str | None = None) -> F
 
     @app.get("/c/{code}/statements.pdf")
     def statements_pdf(request: Request, code: str, lang: str | None = None):
-        """The packages' own PDFs, merged in contest order (every problem must have one)."""
+        """The packages' own PDFs, merged in contest order (every problem must have one that opens)."""
         c = conn(request)
         u = need_user(request, c)
         contest = contest_by_code(c, code, u)
         if not started(contest, u):
             raise HTTPException(404)
         items, _ = statement_set(c, contest, u, lang)
-        files = [settings.problems_dir / i["p"]["slug"] / "statements" / (i["lang"] or "") / "problem.pdf"
-                 for i in items]
-        if not files or not all(f.is_file() for f in files):
-            raise HTTPException(404, "Not every problem has a PDF statement; use the print view.")
+        files = [statement_pdf(i["p"]["slug"], i["lang"]) for i in items]
+        missing = "Not every problem has a PDF statement that opens; use the print view."
+        if not files or not all(pdf_opens(f) for f in files):
+            raise HTTPException(404, missing)
         from pypdf import PdfWriter
         writer = PdfWriter()
-        for f in files:
-            writer.append(str(f))
+        try:
+            for f in files:
+                writer.append(str(f))
+        except Exception:  # opened when checked, yet pypdf can't copy its pages
+            raise HTTPException(404, missing) from None
         buf = io.BytesIO()
         writer.write(buf)
         return Response(buf.getvalue(), media_type="application/pdf", headers={

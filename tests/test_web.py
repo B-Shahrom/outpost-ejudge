@@ -6,7 +6,8 @@ from datetime import datetime
 import pytest
 from fastapi.testclient import TestClient
 
-from outpost import auth, db, worker
+import real_packages as rp
+from outpost import auth, db, polygon, worker
 from outpost.app import create_app
 
 AB = "#include <bits/stdc++.h>\nint main(){long long a,b;std::cin>>a>>b;std::cout<<a+b;}"
@@ -284,6 +285,71 @@ def test_print_view_and_merged_pdf(app, settings, problems):
         assert len(PdfReader(io.BytesIO(r.content)).pages) == 2
     finally:
         pdf.unlink()
+
+
+@pytest.fixture(scope="module")
+def pdf_problems(settings, tmp_path_factory):
+    """Polygon packages with a statement PDF: two that open, one truncated. {slug: (id, log)}"""
+    d = tmp_path_factory.mktemp("pdfs")
+    good = rp.tiny_pdf()
+    out = {}
+    for slug, pdf in (("pdf-a", good), ("pdf-b", good), ("pdf-broken", good[:len(good) // 2])):
+        rec = polygon.Recorder()
+        pid = polygon.import_package(rp.points_package(d / f"{slug}.zip", slug, pdf), settings,
+                                     log=rec, verify=False)
+        out[slug] = (pid, rec.lines)
+    return out
+
+
+def test_broken_statement_pdf_is_dropped_on_import(app, settings, conn, pdf_problems):
+    pid, log = pdf_problems["pdf-broken"]
+    assert any(line.startswith("WARNING statement PDF statements/.pdf/english/problem.pdf dropped: "
+                               "it doesn't parse") for line in log), log
+    row = db.one(conn, "SELECT * FROM problems WHERE id=?", (pid,))
+    assert row["status"] == "ready" and row["checker"] == "testlib"
+    assert not db.loads(row["statements_json"])["english"]["pdf"]
+    assert not (settings.problems_dir / "pdf-broken" / "statements" / "english" / "problem.pdf").exists()
+
+    admin = client(app, "jury", "jurypass")
+    make_contest(admin, "pdf1", "icpc")
+    add_problem(admin, "pdf1", pdf_problems["pdf-a"][0], "A")
+    add_problem(admin, "pdf1", pid, "B")
+    assert 'problem.pdf" target="_blank">PDF</a>' in admin.get("/c/pdf1/p/A").text
+    page = admin.get("/c/pdf1/p/B")
+    assert page.status_code == 200 and "Sum of the Array" in page.text and "problem.pdf" not in page.text
+    assert admin.get("/problem-files/pdf-broken/english/problem.pdf").status_code == 404
+    # Not every problem has a PDF: no merge offered.
+    assert "Package PDFs, merged" not in admin.get("/c/pdf1/print").text
+    assert admin.get("/c/pdf1/statements.pdf").status_code == 404
+
+
+def test_merge_with_a_pdf_that_broke_after_import(app, settings, pdf_problems):
+    """Like a problem imported before imports checked PDFs: the statement says it has one,
+    and the file doesn't open."""
+    import io
+
+    from pypdf import PdfReader
+    admin = client(app, "jury", "jurypass")
+    make_contest(admin, "pdf2", "icpc")
+    add_problem(admin, "pdf2", pdf_problems["pdf-a"][0], "A")
+    add_problem(admin, "pdf2", pdf_problems["pdf-b"][0], "B")
+    assert "Package PDFs, merged" in admin.get("/c/pdf2/print").text
+    r = admin.get("/c/pdf2/statements.pdf")
+    assert r.status_code == 200 and len(PdfReader(io.BytesIO(r.content)).pages) == 2
+
+    pdf = settings.problems_dir / "pdf-b" / "statements" / "english" / "problem.pdf"
+    original = pdf.read_bytes()
+    pdf.write_bytes(b"%PDF-1.4 fake\n%%EOF\n")
+    try:
+        assert "problem.pdf" not in admin.get("/c/pdf2/p/B").text
+        assert 'problem.pdf" target="_blank">PDF</a>' in admin.get("/c/pdf2/p/A").text
+        assert admin.get("/problem-files/pdf-b/english/problem.pdf").status_code == 404
+        assert "Package PDFs, merged" not in admin.get("/c/pdf2/print").text
+        assert admin.get("/c/pdf2/statements.pdf").status_code == 404  # not a 500
+    finally:
+        pdf.write_bytes(original)
+    assert admin.get("/c/pdf2/statements.pdf").status_code == 200
+    assert admin.get("/problem-files/pdf-b/english/problem.pdf").status_code == 200
 
 
 def test_archive_download_and_upload(app):

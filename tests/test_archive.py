@@ -9,7 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from outpost import archive, auth, db, scoring, worker
+import real_packages as rp
+from outpost import archive, auth, db, polygon, scoring, worker
 
 AB = "#include <bits/stdc++.h>\nint main(){long long a,b;std::cin>>a>>b;std::cout<<a+b;}"
 AB_INT = "#include <bits/stdc++.h>\nint main(){int a,b;std::cin>>a>>b;std::cout<<a+b;}"
@@ -108,3 +109,24 @@ def test_a_broken_archive_leaves_nothing_behind(exported, fresh, tmp_path):
     assert not (fresh.problems_dir / "a-plus-b").exists()
     with pytest.raises(archive.ArchiveError, match="not an Outpost"):
         archive.import_contest(c, fresh, tmp_path / "missing.zip")
+
+
+def test_archived_pdfs_that_dont_open_are_dropped(tmp_path):
+    """Archives from Outposts that didn't check PDFs can carry a broken one."""
+    from pypdf import PdfWriter
+    problem = tmp_path / "sum"
+    files = {"english": b"%PDF-1.4 fake\n%%EOF\n", "russian": rp.tiny_pdf(), "empty": None}
+    for lang, content in files.items():
+        (problem / "statements" / lang).mkdir(parents=True)
+        pdf = problem / "statements" / lang / "problem.pdf"
+        if content is None:
+            PdfWriter().write(str(pdf))  # parses, but has no pages
+        else:
+            pdf.write_bytes(content)
+    rec = polygon.Recorder()
+    out = db.loads(archive._drop_broken_pdfs(problem, db.dumps({l: {"pdf": True} for l in files}), rec))
+    assert out == {"english": {"pdf": False}, "russian": {"pdf": True}, "empty": {"pdf": False}}
+    assert rec.lines[0].startswith("WARNING statement PDF sum/statements/english/problem.pdf dropped: "
+                                   "it doesn't parse (PdfReadError")
+    assert rec.lines[1] == "WARNING statement PDF sum/statements/empty/problem.pdf dropped: it has no pages"
+    assert [d.name for d in problem.glob("statements/*/problem.pdf")] == ["problem.pdf"]

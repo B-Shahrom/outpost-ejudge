@@ -9,6 +9,7 @@ importer is tested against the noise it will meet, not a minimal subset.
 
 from __future__ import annotations
 
+import io
 import json
 import zipfile
 from pathlib import Path
@@ -181,7 +182,18 @@ def _statement(lang: str, name: str, legend: str) -> dict[str, str]:
     }
 
 
-def _common(xml: str) -> dict[str, str | bytes]:
+def tiny_pdf(pages: int = 1) -> bytes:
+    """A real, valid PDF of blank pages, as small as pypdf writes one."""
+    from pypdf import PdfWriter
+    w = PdfWriter()
+    for _ in range(pages):
+        w.add_blank_page(width=200, height=200)
+    buf = io.BytesIO()
+    w.write(buf)
+    return buf.getvalue()
+
+
+def _common(xml: str, pdf: bytes | None = None) -> dict[str, str | bytes]:
     files: dict[str, str | bytes] = {
         "problem.xml": xml,
         "files/testlib.h": TESTLIB,
@@ -191,7 +203,7 @@ def _common(xml: str) -> dict[str, str | bytes]:
         "doall.bat": "exit 1\r\n",
         "statements/.html/english/problem.html": "<html><body>generated</body></html>",
         "statements/.html/english/problem-statement.css": "",
-        "statements/.pdf/english/problem.pdf": b"%PDF-1.4 fake\n%%EOF\n",
+        "statements/.pdf/english/problem.pdf": tiny_pdf() if pdf is None else pdf,
         "statements/english/tutorial.tex": "Just add them up in a long long.",
     }
     files.update(_statement("english", "Sum of the Array",
@@ -228,12 +240,14 @@ def standard_package(path: Path) -> Path:
     return _zip(path, files)
 
 
-def points_package(path: Path) -> Path:
-    """A *Linux* package (tests and answers included) whose checker gives partial points."""
+def points_package(path: Path, short_name: str = "close-sum", pdf: bytes | None = None) -> Path:
+    """A *Linux* package (tests and answers included) whose checker gives partial points.
+
+    ``pdf`` replaces its English statement PDF, a valid one-page PDF by default."""
     tests = [{"method": "manual", "sample": "true", "points": "0.0"},
              {"method": "manual", "points": "10.0"}, {"method": "manual", "points": "10.0"}]
-    files = _common(_xml("close-sum", tests=tests, groups="", checker="check.cpp",
-                         solutions={"sol.cpp": "main"}))
+    files = _common(_xml(short_name, tests=tests, groups="", checker="check.cpp",
+                         solutions={"sol.cpp": "main"}), pdf)
     files.update({
         "files/check.cpp": POINTS_CHECK, "check.cpp": POINTS_CHECK, "solutions/sol.cpp": SUM_MAIN,
         "tests/01": "3\n1 2 3\n", "tests/01.a": "6\n",
