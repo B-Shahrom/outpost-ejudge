@@ -289,7 +289,8 @@ def test_crashes_still_read_as_their_signal(settings):
     sb = worker.make_judge(settings, 17, *worker.protections(settings)).sb
     crashes = {
         "null": ("int main(){volatile int*p=0;return *p;}", signal.SIGSEGV),
-        "divide": ("int main(){volatile int z=0;return 1/z;}", signal.SIGFPE),
+        # Both operands opaque: g++ turns 1/z into a comparison that never traps.
+        "divide": ("int main(){volatile int a=7,z=0;return a/z;}", signal.SIGFPE),
         "abort": ("#include <cstdlib>\nint main(){std::abort();}", signal.SIGABRT),
         "recursion": ("int f(volatile int n){volatile char b[4096];b[0]=n;return f(n+1)+b[0];}"
                       "int main(){return f(0);}", signal.SIGSEGV),
