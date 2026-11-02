@@ -116,6 +116,22 @@ its Wi-Fi**. The laptop is the server, the judge and the scoreboard.
 
   With ~4,200 submissions, standings p95 went from seconds to 47 ms and
   every other page's p95 to ~22 ms.
+- **The container keeps the laptop's clock** (2026-11-02). Docker runs it on
+  UTC, so on a laptop at UTC+5 a contest start typed into the admin page
+  ("13:29") was read as 13:29 UTC and the contest began five hours late;
+  every time on the site was UTC too. The start scripts pass the laptop's
+  zone as `OUTPOST_TZ` (compose sets `TZ` from it): the zone name on Linux
+  and macOS, and on Windows today's UTC offset as a POSIX zone, because
+  Windows PowerShell 5.1 can't name it the Linux way. That offset doesn't
+  follow a daylight-saving change during the contest, which is hours long.
+  Without Docker the server already runs on the laptop's clock.
+- **The admin is created before the server starts** (2026-11-02). `serve`
+  exits while there is no admin, so the container restarts, and the start
+  scripts created the admin with `docker compose exec` into it: that only
+  worked when `exec` got in before the first exit. Waiting for the server
+  first lost the race every time. The scripts now build, create the admin
+  with `docker compose run --rm`, start the server, wait for `/healthz`,
+  then run the self-test.
 - **mDNS checks the hostname, not only the service name.** zeroconf's own
   probe only notices another `Outpost …` service, so a printer or anything
   else answering `outpost.local` would have been shadowed. Each candidate

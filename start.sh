@@ -22,8 +22,29 @@ else
 fi
 export OUTPOST_PUBLIC_URL="${OUTPOST_PUBLIC_URL:-${ip:+http://$ip:8000/}}"
 
-docker compose up -d --build
-docker compose exec -T outpost outpost admin jury --if-missing
+# The container must keep this machine's clock: without it it runs on UTC, and
+# a contest start typed into the admin page is read as UTC.
+if [[ -z "${OUTPOST_TZ:-}" ]]; then
+  OUTPOST_TZ=$(timedatectl show -p Timezone --value 2>/dev/null || true)
+  [[ -z "$OUTPOST_TZ" ]] && OUTPOST_TZ=$(readlink /etc/localtime 2>/dev/null | sed -n 's#.*/zoneinfo/##p')
+  if [[ -z "$OUTPOST_TZ" ]]; then  # no zone name: today's offset, as a POSIX zone (sign reversed)
+    z=$(date +%z); s=${z:0:1}; [[ $s == "+" ]] && r="-" || r="+"
+    OUTPOST_TZ="<$z>$r${z:1:2}:${z:3:2}"
+  fi
+fi
+export OUTPOST_TZ
+echo "Time zone: $OUTPOST_TZ"
+
+docker compose build
+# Before the server starts: `serve` exits while there is no admin, so creating
+# one with `exec` would race a container that keeps restarting.
+docker compose run --rm --no-deps -T outpost outpost admin jury --if-missing
+docker compose up -d
+for _ in $(seq 120); do
+  docker compose exec -T outpost python -c "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/healthz', timeout=2)" \
+    >/dev/null 2>&1 && break
+  sleep 1
+done
 echo "Checking compilers and the sandbox..."
 docker compose exec -T outpost outpost selftest || echo "!! The self-test found problems (above). Fix them before a contest."
 

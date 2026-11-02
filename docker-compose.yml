@@ -1,8 +1,9 @@
 # Start with ./start.sh (Linux, macOS) or start-windows.bat (Windows): they find
 # this laptop's address for the login slips and create the first admin.
 #
-# By hand:  OUTPOST_PUBLIC_URL=http://<this laptop's IP>:8000/ docker compose up -d --build
-#           docker compose exec outpost outpost admin jury
+# By hand:  docker compose run --rm outpost outpost admin jury     (first: serve needs an admin)
+#           OUTPOST_PUBLIC_URL=http://<this laptop's IP>:8000/ OUTPOST_TZ=<zone, e.g. Asia/Dushanbe> \
+#             docker compose up -d --build
 services:
   outpost:
     build: .
@@ -21,6 +22,10 @@ services:
     environment:
       OUTPOST_PORT: "8000"
       OUTPOST_PUBLIC_URL: ${OUTPOST_PUBLIC_URL:-}
+      # The laptop's time zone (the start scripts set it). Without it the
+      # container runs on UTC, and a contest start typed into the admin page
+      # is read as UTC: off by the laptop's offset.
+      TZ: ${OUTPOST_TZ:-}
       # OUTPOST_WORKERS: "3"   # default: CPU cores - 1
     restart: unless-stopped
 

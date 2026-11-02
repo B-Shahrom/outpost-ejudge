@@ -30,6 +30,17 @@ if ($ip) {
     Write-Host 'No network address found yet: turn the Mobile Hotspot on, or set the address on the admin dashboard.'
 }
 
+if (-not $env:OUTPOST_TZ) {
+    # The container must keep this laptop's clock. Windows PowerShell 5.1 can't
+    # name the zone the Linux way, so pass today's UTC offset as a POSIX zone
+    # (whose sign is the other way round): UTC+05:00 becomes <+0500>-05:00.
+    $o = [TimeZoneInfo]::Local.GetUtcOffset([DateTime]::Now)
+    $hhmm = '{0:00}{1:00}' -f [math]::Abs($o.Hours), [math]::Abs($o.Minutes)
+    $posix = '{0:00}:{1:00}' -f [math]::Abs($o.Hours), [math]::Abs($o.Minutes)
+    if ($o -lt [TimeSpan]::Zero) { $env:OUTPOST_TZ = "<-$hhmm>+$posix" } else { $env:OUTPOST_TZ = "<+$hhmm>-$posix" }
+}
+Write-Host "Time zone: $env:OUTPOST_TZ"
+
 if ($DryRun) {
     Write-Host 'Dry run: Docker not started.'
     exit 0
@@ -59,9 +70,18 @@ if (-not (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContin
     }
 }
 
-docker compose up -d --build
+docker compose build
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-docker compose exec -T outpost outpost admin jury --if-missing
+# Before the server starts: 'serve' exits while there is no admin, so creating
+# one with 'exec' would race a container that keeps restarting.
+docker compose run --rm --no-deps -T outpost outpost admin jury --if-missing
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+docker compose up -d
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+for ($i = 0; $i -lt 120; $i++) {
+    try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 'http://localhost:8000/healthz' | Out-Null; break }
+    catch { Start-Sleep -Seconds 1 }
+}
 Write-Host 'Checking compilers and the sandbox...'
 docker compose exec -T outpost outpost selftest
 if ($LASTEXITCODE -ne 0) { Write-Host '!! The self-test found problems (above). Fix them before a contest.' }
